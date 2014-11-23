@@ -75,6 +75,9 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
 
   const PROPERTY_JIRA_NAME = 'oauth1:jira:name';
   const PROPERTY_JIRA_URI = 'oauth1:jira:uri';
+  const PROPERTY_JIRA_REVISION_URI_FIELD = 'oauth1:jira:revision_uri_field';
+  const PROPERTY_JIRA_REVISION_URI_FIELD_ID =
+    'oauth1:jira:revision_uri_field_id';
   const PROPERTY_PUBLIC_KEY = 'oauth1:jira:key:public';
   const PROPERTY_PRIVATE_KEY = 'oauth1:jira:key:private';
 
@@ -82,10 +85,13 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
   public function readFormValuesFromProvider() {
     $config = $this->getProviderConfig();
     $uri = $config->getProperty(self::PROPERTY_JIRA_URI);
+    $revision_uri_field =
+      $config->getProperty(self::PROPERTY_JIRA_REVISION_URI_FIELD);
 
     return array(
       self::PROPERTY_JIRA_NAME => $this->getProviderDomain(),
       self::PROPERTY_JIRA_URI => $uri,
+      self::PROPERTY_JIRA_REVISION_URI_FIELD => $revision_uri_field,
     );
   }
 
@@ -100,6 +106,8 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
     return array(
       self::PROPERTY_JIRA_NAME => $name,
       self::PROPERTY_JIRA_URI => $request->getStr(self::PROPERTY_JIRA_URI),
+      self::PROPERTY_JIRA_REVISION_URI_FIELD =>
+        $request->getStr(self::PROPERTY_JIRA_REVISION_URI_FIELD),
     );
   }
 
@@ -113,6 +121,7 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
 
     $key_name = self::PROPERTY_JIRA_NAME;
     $key_uri = self::PROPERTY_JIRA_URI;
+    $key_revision_uri_field = self::PROPERTY_JIRA_REVISION_URI_FIELD;
 
     if (!strlen($values[$key_name])) {
       $errors[] = pht('JIRA instance name is required.');
@@ -136,6 +145,30 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
       }
     }
 
+    if (strlen($values[$key_revision_uri_field])) {
+      try {
+        $field_id = $this->getJIRAFieldId(
+          $values[$key_revision_uri_field],
+          $this->getExternalAccount($request));
+
+        if ($field_id) {
+          $config = $this->getProviderConfig();
+          $config->setProperty(self::PROPERTY_JIRA_REVISION_URI_FIELD_ID,
+            $field_id);
+        } else {
+          $errors[] = pht('JIRA Revision URI Field not found.');
+          $issues[$key_revision_uri_field] = pht('Invalid');
+        }
+      } catch (DoorkeeperMissingLinkException $e) {
+        $errors[] = pht('You can not query JIRA fields because your '.
+          'Phabricator account is not linked to a JIRA account.');
+        $issues[$key_revision_uri_field] = pht('Not Linked');
+      }
+    } else {
+      $config = $this->getProviderConfig();
+      $config->setProperty(self::PROPERTY_JIRA_REVISION_URI_FIELD_ID, '');
+    }
+
     if (!$errors && $is_setup) {
       $config = $this->getProviderConfig();
 
@@ -150,6 +183,44 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
     }
 
     return array($errors, $issues, $values);
+  }
+
+  private function getJIRAFieldId($field_name,
+    PhabricatorExternalAccount $account) {
+    $issue_fields = $this->newJIRAFuture(
+      $account,
+      'rest/api/2/field',
+      'GET')->resolveJSON();
+
+    foreach ($issue_fields as $issue_field) {
+      if ($issue_field['name'] == $field_name) {
+        return $issue_field['id'];
+      }
+    }
+
+    return null;
+  }
+
+  private function getExternalAccount(AphrontRequest $request) {
+    $viewer = $request->getUser();
+
+    $account = id(new PhabricatorExternalAccountQuery())
+      ->setViewer($viewer)
+      ->withUserPHIDs(array($viewer->getPHID()))
+      ->withAccountTypes(array($this->getProviderType()))
+      ->withAccountDomains(array($this->getProviderDomain()))
+      ->requireCapabilities(
+        array(
+          PhabricatorPolicyCapability::CAN_VIEW,
+          PhabricatorPolicyCapability::CAN_EDIT,
+        ))
+      ->executeOne();
+
+    if (!$account) {
+      throw new DoorkeeperMissingLinkException();
+    }
+
+    return $account;
   }
 
   public function extendEditForm(
@@ -188,6 +259,10 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
     $v_uri = $values[self::PROPERTY_JIRA_URI];
     $e_uri = idx($issues, self::PROPERTY_JIRA_URI, $e_required);
 
+    $v_revision_uri_field = $values[self::PROPERTY_JIRA_REVISION_URI_FIELD];
+    $e_revision_uri_field = idx($issues,
+      self::PROPERTY_JIRA_REVISION_URI_FIELD);
+
     if ($is_setup) {
       $form
         ->appendRemarkupInstructions(
@@ -223,7 +298,18 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
             pht(
               'The URI where JIRA is installed. For example: %s',
               phutil_tag('tt', array(), 'https://jira.mycompany.com/')))
-          ->setError($e_uri));
+          ->setError($e_uri))
+      ->appendChild(
+        id(new AphrontFormTextControl())
+          ->setLabel(pht('JIRA Revision URI Field'))
+          ->setValue($v_revision_uri_field)
+          ->setName(self::PROPERTY_JIRA_REVISION_URI_FIELD)
+          ->setCaption(
+            pht(
+              'The field name in JIRA, where associated "Differential '.
+              'Revision URI" will be stored. For example: %s',
+              phutil_tag('tt', array(), 'Differential Revision')))
+          ->setError($e_revision_uri_field));
 
     if (!$is_setup) {
       $config = $this->getProviderConfig();
