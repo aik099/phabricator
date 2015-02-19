@@ -17,6 +17,19 @@ final class PhabricatorAuditTransaction
   const MAILTAG_TASKS          = 'audit-tasks';
   const MAILTAG_OTHER          = 'audit-other';
 
+  protected function getConfiguration() {
+    return array(
+      self::CONFIG_KEY_SCHEMA => array(
+        'key_object' => array(
+          'columns' => array('objectPHID'),
+        ),
+        'key_report' => array(
+          'columns' => array('transactionType', 'dateCreated'),
+        ),
+      ),
+    ) + parent::getConfiguration();
+  }
+
   public function getApplicationName() {
     return 'audit';
   }
