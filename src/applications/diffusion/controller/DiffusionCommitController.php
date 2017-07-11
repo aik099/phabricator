@@ -712,6 +712,20 @@ final class DiffusionCommitController extends DiffusionController {
         $task_list);
     }
 
+    $field_list = PhabricatorCustomField::getObjectFields(
+      $commit,
+      PhabricatorCustomField::ROLE_VIEW);
+
+    $field_list->setViewer($viewer);
+    $field_list->readFieldsFromStorage($commit);
+
+    if ($field_list) {
+      $field_list->appendFieldsToPropertyList(
+        $commit,
+        $viewer,
+        $view);
+    }
+
     return $view;
   }
 
