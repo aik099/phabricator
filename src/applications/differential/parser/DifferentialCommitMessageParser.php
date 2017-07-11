@@ -280,7 +280,7 @@ final class DifferentialCommitMessageParser extends Phobject {
   }
 
 
-  private function extractJiraIssues($corpus) {
+  public function extractJiraIssues($corpus) {
     $parts = null;
     preg_match_all('/\b[[:upper:]]+\-\d+\b/', $corpus, $parts);
 

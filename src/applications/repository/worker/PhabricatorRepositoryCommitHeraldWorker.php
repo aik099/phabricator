@@ -99,7 +99,11 @@ final class PhabricatorRepositoryCommitHeraldWorker
     }
     $editor->setRawPatch($raw_patch);
 
-    return $editor->applyTransactions($commit, $xactions);
+    $result = $editor->applyTransactions($commit, $xactions);
+
+    $this->detectJIRAIssues($repository, $commit, $data->getCommitMessage());
+
+    return $result;
   }
 
   private function loadRawPatchText(
@@ -163,6 +167,54 @@ final class PhabricatorRepositoryCommitHeraldWorker
     }
 
     return $file->loadFileData();
+  }
+
+  private function detectJIRAIssues(
+    PhabricatorRepository $repository,
+    PhabricatorRepositoryCommit $commit,
+    $message) {
+    $author_phid = $commit->getAuthorPHID();
+    $jira_issues_field = new PhabricatorCommitJIRAIssuesField();
+
+    // Commit author must be valid user with JIRA access permissions.
+    if (!$author_phid || !$jira_issues_field->isFieldEnabled()) {
+      return;
+    }
+
+    $parser = new DifferentialCommitMessageParser();
+    $jira_issues = $parser->extractJiraIssues($message);
+
+    if (!$jira_issues) {
+      return;
+    }
+
+    $viewer = id(new PhabricatorPeopleQuery())
+      ->setViewer(PhabricatorUser::getOmnipotentUser())
+      ->withPHIDs(array($author_phid))
+      ->needUserSettings(true)
+      ->executeOne();
+
+    try {
+      DiffusionQuery::callConduitWithDiffusionRequest(
+        $viewer,
+        DiffusionRequest::newFromDictionary(
+          array(
+            'repository' => $repository,
+            'user' => $viewer,
+          )),
+        'diffusion.commit.edit',
+        array(
+          'objectIdentifier' => $commit->getPHID(),
+          'transactions' => array(
+            array(
+              'type' => $jira_issues_field->getModernFieldKey(),
+              'value' => explode(', ', $jira_issues),
+            )
+          ),
+        ));
+    } catch (PhabricatorApplicationTransactionValidationException $ex) {
+        // When non-existing JIRA task is used or user can't view it.
+    }
   }
 
 }
