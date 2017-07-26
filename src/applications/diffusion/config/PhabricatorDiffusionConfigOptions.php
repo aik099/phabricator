@@ -36,6 +36,15 @@ final class PhabricatorDiffusionConfigOptions
       );
     }
 
+    $fields_example = array(
+      'mycompany.estimated-hours' => array(
+        'name' => pht('Estimated Hours'),
+        'type' => 'int',
+        'caption' => pht('Estimated number of hours this will take.'),
+      ),
+    );
+    $fields_json = id(new PhutilJSON())->encodeFormatted($fields_example);
+
     return array(
       $this->newOption(
         'metamta.diffusion.subject-prefix',
@@ -140,6 +149,15 @@ final class PhabricatorDiffusionConfigOptions
             'from web traffic (for example, if you use different SSH and '.
             'web load balancers), you can set the SSH hostname here. This '.
             'is an advanced option.')),
+
+      $this->newOption('diffusion.custom-field-definitions', 'wild', array())
+        ->setSummary(pht('Custom Diffusion fields.'))
+        ->setDescription(
+          pht(
+            'Array of custom fields for Diffusion commits. For details on '.
+            'adding custom fields to Diffusion, see "Configuring Custom '.
+            'Fields" in the documentation.'))
+        ->addExample($fields_json, pht('Valid setting')),
       $this->newOption('diffusion.fields', $custom_field_type, $default_fields)
         ->setCustomData(
           id(new PhabricatorRepositoryCommit())

@@ -2349,6 +2349,7 @@ phutil_register_library_map(array(
     'PhabricatorCommentEditField' => 'applications/transactions/editfield/PhabricatorCommentEditField.php',
     'PhabricatorCommentEditType' => 'applications/transactions/edittype/PhabricatorCommentEditType.php',
     'PhabricatorCommitBranchesField' => 'applications/repository/customfield/PhabricatorCommitBranchesField.php',
+    'PhabricatorCommitConfiguredCustomField' => 'applications/repository/customfield/PhabricatorCommitConfiguredCustomField.php',
     'PhabricatorCommitCustomField' => 'applications/repository/customfield/PhabricatorCommitCustomField.php',
     'PhabricatorCommitJIRAIssuesField' => 'applications/repository/customfield/PhabricatorCommitJIRAIssuesField.php',
     'PhabricatorCommitMergedCommitsField' => 'applications/repository/customfield/PhabricatorCommitMergedCommitsField.php',
@@ -7601,6 +7602,10 @@ phutil_register_library_map(array(
     'PhabricatorCommentEditField' => 'PhabricatorEditField',
     'PhabricatorCommentEditType' => 'PhabricatorEditType',
     'PhabricatorCommitBranchesField' => 'PhabricatorCommitCustomField',
+    'PhabricatorCommitConfiguredCustomField' => array(
+      'PhabricatorCommitCustomField',
+      'PhabricatorStandardCustomFieldInterface',
+    ),
     'PhabricatorCommitCustomField' => 'PhabricatorCustomField',
     'PhabricatorCommitJIRAIssuesField' => 'PhabricatorCommitStoredCustomField',
     'PhabricatorCommitMergedCommitsField' => 'PhabricatorCommitCustomField',

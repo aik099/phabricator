@@ -18,18 +18,6 @@ abstract class PhabricatorCommitStoredCustomField
     return true;
   }
 
-  public function newStorageObject() {
-    return new PhabricatorRepositoryCustomFieldStorage();
-  }
-
-  protected function newStringIndexStorage() {
-    return new PhabricatorRepositoryCustomFieldStringIndex();
-  }
-
-  protected function newNumericIndexStorage() {
-    return new PhabricatorRepositoryCustomFieldNumericIndex();
-  }
-
   public function getValueForStorage() {
     return $this->value;
   }

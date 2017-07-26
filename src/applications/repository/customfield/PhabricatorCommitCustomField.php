@@ -18,4 +18,15 @@ abstract class PhabricatorCommitCustomField
     return $this->getFieldKeyForConduit();
   }
 
+  public function newStorageObject() {
+    return new PhabricatorRepositoryCustomFieldStorage();
+  }
+
+  protected function newStringIndexStorage() {
+    return new PhabricatorRepositoryCustomFieldStringIndex();
+  }
+
+  protected function newNumericIndexStorage() {
+    return new PhabricatorRepositoryCustomFieldNumericIndex();
+  }
 }
