@@ -719,11 +719,11 @@ final class DiffusionRepositoryController extends DiffusionController {
     $drequest = $this->getDiffusionRequest();
     $repository = $drequest->getRepository();
 
-    switch ($repository->getVersionControlSystem()) {
+    /*switch ($repository->getVersionControlSystem()) {
       case PhabricatorRepositoryType::REPOSITORY_TYPE_SVN:
         // No tags in SVN.
         return false;
-    }
+    }*/
 
     return true;
   }

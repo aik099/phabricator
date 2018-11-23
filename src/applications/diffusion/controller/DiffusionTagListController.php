@@ -32,9 +32,9 @@ final class DiffusionTagListController extends DiffusionController {
     }
 
     switch ($repository->getVersionControlSystem()) {
-      case PhabricatorRepositoryType::REPOSITORY_TYPE_SVN:
+      /*case PhabricatorRepositoryType::REPOSITORY_TYPE_SVN:
         $tags = array();
-        break;
+        break;*/
       default:
         $conduit_result = $this->callConduitWithDiffusionRequest(
           'diffusion.tagsquery',

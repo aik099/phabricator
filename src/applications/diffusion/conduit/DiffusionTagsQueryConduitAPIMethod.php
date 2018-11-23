@@ -184,6 +184,13 @@ final class DiffusionTagsQueryConduitAPIMethod
       $tags = array_slice($tags, 0, $limit);
     }
 
+    // The SVN doesn't have messages for tags.
+    if ($request->getValue('needMessages')) {
+      foreach ($tags as $tag) {
+        $tag->attachMessage('');
+      }
+    }
+
     return mpull($tags, 'toDictionary');
   }
 
