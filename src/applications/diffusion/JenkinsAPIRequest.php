@@ -65,7 +65,7 @@ final class JenkinsAPIRequest {
       $api_token = PhabricatorEnv::getEnvConfig('jenkins.api-token');
 
       /** @var \Httpful\Response $response */
-      $response = \Httpful\Request::get($url, $this->expects)
+      $response = \Httpful\Request::post($url, $this->expects)
         ->authenticateWith($user_id, $api_token)
         ->autoParse(false)
         ->send();
