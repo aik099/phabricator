@@ -77,7 +77,7 @@ final class JenkinsAPIRequest {
 
       if ($response->hasErrors()) {
         throw new Exception(
-          'Jenkins request failed with '.$response->code.' HTTP code');
+          'Jenkins request failed with '.$response->code.' HTTP code and this message: ' . $response->body);
       }
 
       if ($this->expects == 'json') {
