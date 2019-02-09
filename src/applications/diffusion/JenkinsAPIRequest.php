@@ -65,7 +65,7 @@ final class JenkinsAPIRequest {
       $api_token = PhabricatorEnv::getEnvConfig('jenkins.api-token');
 
       /** @var \Httpful\Response $response */
-      $response = \Httpful\Request::get($url, $this->expects)
+      $response = \Httpful\Request::post($url, $this->expects)
         ->authenticateWith($user_id, $api_token)
         ->autoParse(false)
         ->send();
@@ -77,7 +77,7 @@ final class JenkinsAPIRequest {
 
       if ($response->hasErrors()) {
         throw new Exception(
-          'Jenkins request failed with '.$response->code.' HTTP code');
+          'Jenkins request failed with '.$response->code.' HTTP code and this message: ' . $response->body);
       }
 
       if ($this->expects == 'json') {
