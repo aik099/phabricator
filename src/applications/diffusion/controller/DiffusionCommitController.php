@@ -278,67 +278,6 @@ final class DiffusionCommitController extends DiffusionController {
         $change_header,
         $warning_view);
 
-      // FIXME: BEGIN1
-      $changes_anchor = id(new PhabricatorAnchorView())
-              ->setAnchorName('changes')
-              ->setNavigationMarker(true);
-      $change_table->appendChild($changes_anchor);
-      $whitespace = $request->getStr(
-        'whitespace',
-        DifferentialChangesetParser::WHITESPACE_SHOW_ALL);
-
-      $options = array(
-        DifferentialChangesetParser::WHITESPACE_IGNORE_FORCE => 'Ignore All',
-        DifferentialChangesetParser::WHITESPACE_IGNORE_ALL => 'Ignore Most',
-        DifferentialChangesetParser::WHITESPACE_IGNORE_TRAILING =>
-          'Ignore Trailing',
-        DifferentialChangesetParser::WHITESPACE_SHOW_ALL => 'Show All',
-      );
-
-      foreach ($options as $value => $label) {
-        $options[$value] = phutil_tag(
-          'option',
-          array(
-            'value' => $value,
-            'selected' => ($value == $whitespace)
-            ? 'selected'
-            : null,
-          ),
-          $label);
-      }
-      $select = phutil_tag('select', array('name' => 'whitespace'), $options);
-
-      $show_changes = phutil_tag(
-        'div',
-        array(
-          'class' => 'differential-update-history-footer',
-        ),
-        array(
-          phutil_tag(
-            'label',
-            array(),
-            array(
-              pht('Whitespace Changes:'),
-              $select,
-            )),
-          phutil_tag(
-            'button',
-            array(),
-            pht('Show Changes')),
-        ));
-
-      $show_changes_form = phabricator_form(
-        $viewer,
-        array(
-          'action' => '#changes',
-        ),
-        array(
-          $show_changes,
-        ));
-
-      $change_table->appendChild($show_changes_form);
-      // FIXME: END1
-
       $vcs = $repository->getVersionControlSystem();
       switch ($vcs) {
         case PhabricatorRepositoryType::REPOSITORY_TYPE_SVN:
@@ -402,7 +341,6 @@ final class DiffusionCommitController extends DiffusionController {
       $change_list->setVisibleChangesets($visible_changesets);
       $change_list->setRenderingReferences($references);
       $change_list->setRenderURI($repository->getPathURI('diff/'));
-      $change_list->setWhitespace($whitespace);
       $change_list->setRepository($repository);
       $change_list->setUser($viewer);
       $change_list->setBackground(PHUIObjectBoxView::BLUE_PROPERTY);

@@ -40,10 +40,6 @@ final class DiffusionChangeController extends DiffusionController {
       0 => $changeset,
     );
 
-    $whitespace = $this->getRequest()->getStr(
-      'whitespace',
-      DifferentialChangesetParser::WHITESPACE_SHOW_ALL);
-
     $changeset_header = $this->buildChangesetHeader($drequest);
 
     $changeset_view = new DifferentialChangesetListView();
@@ -69,7 +65,8 @@ final class DiffusionChangeController extends DiffusionController {
 
     $changeset_view->setRenderURI($repository->getPathURI('diff/'));
 
-    $changeset_view->setWhitespace($whitespace);
+    $changeset_view->setWhitespace(
+          DifferentialChangesetParser::WHITESPACE_SHOW_ALL);
     $changeset_view->setUser($viewer);
     $changeset_view->setHeader($changeset_header);
 

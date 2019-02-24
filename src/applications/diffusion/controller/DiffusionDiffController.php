@@ -19,9 +19,6 @@ final class DiffusionDiffController extends DiffusionController {
     $viewer = $this->getViewer();
     $drequest = $this->getDiffusionRequest();
 
-    $whitespace = $request->getStr('whitespace',
-      DifferentialChangesetParser::WHITESPACE_SHOW_ALL);
-
     if (!$request->isAjax()) {
 
       // This request came out of the dropdown menu, either "View Standalone"
@@ -39,10 +36,7 @@ final class DiffusionDiffController extends DiffusionController {
       } else {
         $uri = $drequest->generateURI(
           array(
-            'action' => 'change',
-            'params' => array(
-              'whitespace' => $whitespace,
-            ),
+            'action'  => 'change',
           ));
       }
 
@@ -94,7 +88,8 @@ final class DiffusionDiffController extends DiffusionController {
       ($viewer->getPHID() == $commit->getAuthorPHID()));
     $parser->setObjectOwnerPHID($commit->getAuthorPHID());
 
-    $parser->setWhitespaceMode($whitespace);
+    $parser->setWhitespaceMode(
+      DifferentialChangesetParser::WHITESPACE_SHOW_ALL);
 
     $inlines =
       array_merge(PhabricatorAuditInlineComment::loadDraftAndPublishedComments(
