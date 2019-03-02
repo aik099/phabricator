@@ -206,8 +206,8 @@ final class PhabricatorOwnersPackageQuery
     if ($this->paths !== null) {
       $where[] = qsprintf(
         $conn,
-        'rpath.path IN (%Ls)',
-        $this->getFragmentsForPaths($this->paths));
+        'rpath.pathIndex IN (%Ls)',
+        $this->getFragmentIndexesForPaths($this->paths));
     }
 
     if ($this->statuses !== null) {
@@ -220,15 +220,15 @@ final class PhabricatorOwnersPackageQuery
     if ($this->controlMap) {
       $clauses = array();
       foreach ($this->controlMap as $repository_phid => $paths) {
-        $fragments = $this->getFragmentsForPaths($paths);
+        $indexes = $this->getFragmentIndexesForPaths($paths);
 
         $clauses[] = qsprintf(
           $conn,
-          '(rpath.repositoryPHID = %s AND rpath.path IN (%Ls))',
+          '(rpath.repositoryPHID = %s AND rpath.pathIndex IN (%Ls))',
           $repository_phid,
-          $fragments);
+          $indexes);
       }
-      $where[] = implode(' OR ', $clauses);
+      $where[] = qsprintf($conn, '%LO', $clauses);
     }
 
     return $where;
@@ -333,6 +333,16 @@ final class PhabricatorOwnersPackageQuery
     return $fragments;
   }
 
+  private function getFragmentIndexesForPaths(array $paths) {
+    $indexes = array();
+
+    foreach ($this->getFragmentsForPaths($paths) as $fragment) {
+      $indexes[] = PhabricatorHash::digestForIndex($fragment);
+    }
+
+    return $indexes;
+  }
+
 
 /* -(  Path Control  )------------------------------------------------------- */
 
@@ -398,13 +408,36 @@ final class PhabricatorOwnersPackageQuery
       }
     }
 
+    // At each strength level, drop weak packages if there are also strong
+    // packages of the same strength.
+    $strength_map = igroup($matches, 'strength');
+    foreach ($strength_map as $strength => $package_list) {
+      $any_strong = false;
+      foreach ($package_list as $package_id => $package) {
+        if (!$package['weak']) {
+          $any_strong = true;
+          break;
+        }
+      }
+      if ($any_strong) {
+        foreach ($package_list as $package_id => $package) {
+          if ($package['weak']) {
+            unset($matches[$package_id]);
+          }
+        }
+      }
+    }
+
     $matches = isort($matches, 'strength');
     $matches = array_reverse($matches);
 
-    $first_id = null;
+    $strongest = null;
     foreach ($matches as $package_id => $match) {
-      if ($first_id === null) {
-        $first_id = $package_id;
+      if ($strongest === null) {
+        $strongest = $match['strength'];
+      }
+
+      if ($match['strength'] === $strongest) {
         continue;
       }
 

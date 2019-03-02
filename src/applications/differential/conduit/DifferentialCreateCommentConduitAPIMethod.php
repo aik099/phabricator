@@ -63,6 +63,7 @@ final class DifferentialCreateCommentConduitAPIMethod
       'resign' => DifferentialRevisionResignTransaction::TRANSACTIONTYPE,
       'request_review' =>
         DifferentialRevisionRequestReviewTransaction::TRANSACTIONTYPE,
+      'rethink' => DifferentialRevisionPlanChangesTransaction::TRANSACTIONTYPE,
     );
 
     $action = $request->getValue('action');
@@ -76,9 +77,10 @@ final class DifferentialCreateCommentConduitAPIMethod
         case 'none':
           break;
         default:
-          $xactions[] = id(new DifferentialTransaction())
-            ->setTransactionType(DifferentialTransaction::TYPE_ACTION)
-            ->setNewValue($action);
+          throw new Exception(
+            pht(
+              'Unsupported action "%s".',
+              $action));
           break;
       }
     }
@@ -104,9 +106,11 @@ final class DifferentialCreateCommentConduitAPIMethod
       }
     }
 
+    // NOTE: The legacy "silent" flag is now ignored and has no effect. See
+    // T13042.
+
     $editor = id(new DifferentialTransactionEditor())
       ->setActor($viewer)
-      ->setDisableEmail($request->getValue('silent'))
       ->setContentSource($request->newContentSource())
       ->setContinueOnNoEffect(true)
       ->setContinueOnMissingFields(true);

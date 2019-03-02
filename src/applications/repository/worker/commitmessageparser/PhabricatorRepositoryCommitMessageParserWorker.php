@@ -66,6 +66,38 @@ abstract class PhabricatorRepositoryCommitMessageParserWorker
     $committer = $ref->getCommitter();
     $hashes = $ref->getHashes();
 
+    $author_identity = id(new PhabricatorRepositoryIdentityQuery())
+      ->setViewer(PhabricatorUser::getOmnipotentUser())
+      ->withIdentityNames(array($author))
+      ->executeOne();
+
+    if (!$author_identity) {
+      $author_identity = id(new PhabricatorRepositoryIdentity())
+        ->setAuthorPHID($commit->getPHID())
+        ->setIdentityName($author)
+        ->setAutomaticGuessedUserPHID(
+          $this->resolveUserPHID($commit, $author))
+        ->save();
+    }
+
+    $committer_identity = null;
+
+    if ($committer) {
+      $committer_identity = id(new PhabricatorRepositoryIdentityQuery())
+        ->setViewer(PhabricatorUser::getOmnipotentUser())
+        ->withIdentityNames(array($committer))
+        ->executeOne();
+
+      if (!$committer_identity) {
+        $committer_identity = id(new PhabricatorRepositoryIdentity())
+          ->setAuthorPHID($commit->getPHID())
+          ->setIdentityName($committer)
+          ->setAutomaticGuessedUserPHID(
+            $this->resolveUserPHID($commit, $committer))
+          ->save();
+      }
+    }
+
     $data = id(new PhabricatorRepositoryCommitData())->loadOneWhere(
       'commitID = %d',
       $commit->getID());
@@ -82,6 +114,8 @@ abstract class PhabricatorRepositoryCommitMessageParserWorker
     $data->setCommitDetail('authorEmail', $ref->getAuthorEmail());
 
     $data->setCommitDetail(
+      'authorIdentityPHID', $author_identity->getPHID());
+    $data->setCommitDetail(
       'authorPHID',
       $this->resolveUserPHID($commit, $author));
 
@@ -96,6 +130,10 @@ abstract class PhabricatorRepositoryCommitMessageParserWorker
       $data->setCommitDetail(
         'committerPHID',
         $this->resolveUserPHID($commit, $committer));
+      $data->setCommitDetail(
+        'committerIdentityPHID', $committer_identity->getPHID());
+
+      $commit->setCommitterIdentityPHID($committer_identity->getPHID());
     }
 
     $repository = $this->repository;
@@ -132,6 +170,8 @@ abstract class PhabricatorRepositoryCommitMessageParserWorker
     if ($author_phid != $commit->getAuthorPHID()) {
       $commit->setAuthorPHID($author_phid);
     }
+
+    $commit->setAuthorIdentityPHID($author_identity->getPHID());
 
     $commit->setSummary($data->getSummary());
     $this->detectCommitType($commit);
@@ -187,11 +227,6 @@ abstract class PhabricatorRepositoryCommitMessageParserWorker
       $revision = $revision_query->executeOne();
 
       if ($revision) {
-        if (!$data->getCommitDetail('precommitRevisionStatus')) {
-          $data->setCommitDetail(
-            'precommitRevisionStatus',
-            $revision->getStatus());
-        }
         $commit_drev = DiffusionCommitHasRevisionEdgeType::EDGECONST;
         id(new PhabricatorEdgeEditor())
           ->addEdge($commit->getPHID(), $commit_drev, $revision->getPHID())
@@ -204,14 +239,13 @@ abstract class PhabricatorRepositoryCommitMessageParserWorker
           $revision->getID(),
           $commit->getPHID());
 
-        $status_closed = ArcanistDifferentialRevisionStatus::CLOSED;
-        $should_close = ($revision->getStatus() != $status_closed) &&
-                        $should_autoclose;
-
+        $should_close = !$revision->isPublished() && $should_autoclose;
         if ($should_close) {
-           $commit_close_xaction = id(new DifferentialTransaction())
-            ->setTransactionType(DifferentialTransaction::TYPE_ACTION)
-            ->setNewValue(DifferentialAction::ACTION_CLOSE)
+          $type_close = DifferentialRevisionCloseTransaction::TRANSACTIONTYPE;
+
+          $commit_close_xaction = id(new DifferentialTransaction())
+            ->setTransactionType($type_close)
+            ->setNewValue(true)
             ->setMetadataValue('isCommitClose', true);
 
           $commit_close_xaction->setMetadataValue(

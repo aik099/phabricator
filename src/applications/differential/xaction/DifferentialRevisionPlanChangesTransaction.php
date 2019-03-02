@@ -10,7 +10,8 @@ final class DifferentialRevisionPlanChangesTransaction
     return pht('Plan Changes');
   }
 
-  protected function getRevisionActionDescription() {
+  protected function getRevisionActionDescription(
+    DifferentialRevision $revision) {
     return pht(
       'This revision will be removed from review queues until it is revised.');
   }
@@ -46,19 +47,32 @@ final class DifferentialRevisionPlanChangesTransaction
   }
 
   public function generateOldValue($object) {
-    $status_planned = ArcanistDifferentialRevisionStatus::CHANGES_PLANNED;
-    return ($object->getStatus() == $status_planned);
+    return $object->isChangePlanned();
   }
 
   public function applyInternalEffects($object, $value) {
-    $status_planned = ArcanistDifferentialRevisionStatus::CHANGES_PLANNED;
-    $object->setStatus($status_planned);
+    $status_planned = DifferentialRevisionStatus::CHANGES_PLANNED;
+    $object->setModernRevisionStatus($status_planned);
   }
 
   protected function validateAction($object, PhabricatorUser $viewer) {
-    $status_planned = ArcanistDifferentialRevisionStatus::CHANGES_PLANNED;
+    if ($object->isDraft()) {
 
-    if ($object->getStatus() == $status_planned) {
+      // See PHI346. Until the "Draft" state fully unprototypes, allow drafts
+      // to be moved to "changes planned" via the API. This preserves the
+      // behavior of "arc diff --plan-changes". We still prevent this
+      // transition from the web UI.
+      // TODO: Remove this once drafts leave prototype.
+
+      $editor = $this->getEditor();
+      $type_web = PhabricatorWebContentSource::SOURCECONST;
+      if ($editor->getContentSource()->getSource() == $type_web) {
+        throw new Exception(
+          pht('You can not plan changes to a draft revision.'));
+      }
+    }
+
+    if ($object->isChangePlanned()) {
       throw new Exception(
         pht(
           'You can not request review of this revision because this '.
@@ -82,9 +96,16 @@ final class DifferentialRevisionPlanChangesTransaction
   }
 
   public function getTitle() {
-    return pht(
-      '%s planned changes to this revision.',
-      $this->renderAuthor());
+    if ($this->isDraftDemotion()) {
+      return pht(
+        '%s returned this revision to the author for changes because remote '.
+        'builds failed.',
+        $this->renderAuthor());
+    } else {
+      return pht(
+        '%s planned changes to this revision.',
+        $this->renderAuthor());
+    }
   }
 
   public function getTitleForFeed() {
@@ -92,6 +113,18 @@ final class DifferentialRevisionPlanChangesTransaction
       '%s planned changes to %s.',
       $this->renderAuthor(),
       $this->renderObject());
+  }
+
+  private function isDraftDemotion() {
+    return (bool)$this->getMetadataValue('draft.demote');
+  }
+
+  public function getTransactionTypeForConduit($xaction) {
+    return 'plan-changes';
+  }
+
+  public function getFieldValuesForConduit($object, $data) {
+    return array();
   }
 
 }

@@ -21,7 +21,6 @@ final class PHUIHeaderView extends AphrontTagView {
   private $policyObject;
   private $epoch;
   private $actionItems = array();
-  private $badges = array();
   private $href;
   private $actionList;
   private $actionListID;
@@ -43,11 +42,6 @@ final class PHUIHeaderView extends AphrontTagView {
 
   public function addTag(PHUITagView $tag) {
     $this->tags[] = $tag;
-    return $this;
-  }
-
-  public function addBadge(PHUIBadgeMiniView $badge) {
-    $this->badges[] = $badge;
     return $this;
   }
 
@@ -172,7 +166,7 @@ final class PHUIHeaderView extends AphrontTagView {
     $classes[] = 'phui-header-shell';
 
     if ($this->noBackground) {
-      $classes[] = 'phui-header-no-backgound';
+      $classes[] = 'phui-header-no-background';
     }
 
     if ($this->bleedHeader) {
@@ -313,9 +307,14 @@ final class PHUIHeaderView extends AphrontTagView {
 
     $icon = null;
     if ($this->headerIcon) {
-      $icon = id(new PHUIIconView())
-        ->setIcon($this->headerIcon)
-        ->addClass('phui-header-icon');
+      if ($this->headerIcon instanceof PHUIIconView) {
+        $icon = id(clone $this->headerIcon)
+          ->addClass('phui-header-icon');
+      } else {
+        $icon = id(new PHUIIconView())
+          ->setIcon($this->headerIcon)
+          ->addClass('phui-header-icon');
+      }
     }
 
     $header_content = $this->header;
@@ -341,21 +340,13 @@ final class PHUIHeaderView extends AphrontTagView {
         $header_content,
       ));
 
-    if ($this->subheader || $this->badges) {
-      $badges = null;
-      if ($this->badges) {
-        $badges = new PHUIBadgeBoxView();
-        $badges->addItems($this->badges);
-        $badges->setCollapsed(true);
-      }
-
+    if ($this->subheader) {
       $left[] = phutil_tag(
         'div',
         array(
           'class' => 'phui-header-subheader',
         ),
         array(
-          $badges,
           $this->subheader,
         ));
     }
@@ -482,28 +473,45 @@ final class PHUIHeaderView extends AphrontTagView {
     // policy differs from the default policy. If it does, we'll call it out
     // as changed.
     if (!$use_space_policy) {
-      $default_policy = PhabricatorPolicyQuery::getDefaultPolicyForObject(
-        $viewer,
-        $object,
-        $view_capability);
-      if ($default_policy) {
-        if ($default_policy->getPHID() != $policy->getPHID()) {
-          $container_classes[] = 'policy-adjusted';
-          if ($default_policy->isStrongerThan($policy)) {
-            // The policy has strictly been weakened. For example, the
-            // default might be "All Users" and the current policy is "Public".
-            $container_classes[] = 'policy-adjusted-weaker';
-          } else if ($policy->isStrongerThan($default_policy)) {
-            // The policy has strictly been strengthened, and is now more
-            // restrictive than the default. For example, "All Users" has
-            // been replaced with "No One".
-            $container_classes[] = 'policy-adjusted-stronger';
-          } else {
-            // The policy has been adjusted but not strictly strengthened
-            // or weakened. For example, "Members of X" has been replaced with
-            // "Members of Y".
-            $container_classes[] = 'policy-adjusted-different';
+      $strength = null;
+      if ($object instanceof PhabricatorPolicyCodexInterface) {
+        $codex = id(PhabricatorPolicyCodex::newFromObject($object, $viewer))
+          ->setCapability($view_capability);
+        $strength = $codex->compareToDefaultPolicy($policy);
+      } else {
+        $default_policy = PhabricatorPolicyQuery::getDefaultPolicyForObject(
+          $viewer,
+          $object,
+          $view_capability);
+
+        if ($default_policy) {
+          if ($default_policy->getPHID() != $policy->getPHID()) {
+            if ($default_policy->isStrongerThan($policy)) {
+              $strength = PhabricatorPolicyStrengthConstants::WEAKER;
+            } else if ($policy->isStrongerThan($default_policy)) {
+              $strength = PhabricatorPolicyStrengthConstants::STRONGER;
+            } else {
+              $strength = PhabricatorPolicyStrengthConstants::ADJUSTED;
+            }
           }
+        }
+      }
+
+      if ($strength) {
+        if ($strength == PhabricatorPolicyStrengthConstants::WEAKER) {
+          // The policy has strictly been weakened. For example, the
+          // default might be "All Users" and the current policy is "Public".
+          $container_classes[] = 'policy-adjusted-weaker';
+        } else if ($strength == PhabricatorPolicyStrengthConstants::STRONGER) {
+          // The policy has strictly been strengthened, and is now more
+          // restrictive than the default. For example, "All Users" has
+          // been replaced with "No One".
+          $container_classes[] = 'policy-adjusted-stronger';
+        } else {
+          // The policy has been adjusted but not strictly strengthened
+          // or weakened. For example, "Members of X" has been replaced with
+          // "Members of Y".
+          $container_classes[] = 'policy-adjusted-different';
         }
       }
     }

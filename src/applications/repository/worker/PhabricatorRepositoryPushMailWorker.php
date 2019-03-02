@@ -99,7 +99,7 @@ final class PhabricatorRepositoryPushMailWorker
       $body->addTextSection(pht('REFERENCES'), implode("\n", $ref_lines));
     }
 
-    $prefix = PhabricatorEnv::getEnvConfig('metamta.diffusion.subject-prefix');
+    $prefix = pht('[Diffusion]');
 
     $parts = array();
     if ($commit_count) {
@@ -123,8 +123,8 @@ final class PhabricatorRepositoryPushMailWorker
       ->setSubject($subject)
       ->setFrom($event->getPusherPHID())
       ->setBody($body->render())
+      ->setHTMLBody($body->renderHTML())
       ->setThreadID($event->getPHID(), $is_new = true)
-      ->addHeader('Thread-Topic', $subject)
       ->setIsBulk(true);
 
     return $target->willSendMail($mail);

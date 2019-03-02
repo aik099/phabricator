@@ -35,8 +35,7 @@ final class PhabricatorMacroEditor
     $name = 'Image Macro "'.$name.'"';
 
     return id(new PhabricatorMetaMTAMail())
-      ->setSubject($name)
-      ->addHeader('Thread-Topic', $name);
+      ->setSubject($name);
   }
 
   protected function getMailTo(PhabricatorLiskDAO $object) {
@@ -58,7 +57,7 @@ final class PhabricatorMacroEditor
   }
 
   protected function getMailSubjectPrefix() {
-    return PhabricatorEnv::getEnvConfig('metamta.macro.subject-prefix');
+    return pht('[Macro]');
   }
 
   protected function shouldPublishFeedStory(

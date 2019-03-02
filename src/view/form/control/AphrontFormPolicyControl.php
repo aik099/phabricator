@@ -279,7 +279,6 @@ final class AphrontFormPolicyControl extends AphrontFormControl {
         ->setIcon($icon);
     }
 
-
     if ($this->templatePHIDType) {
       $context_path = 'template/'.$this->templatePHIDType.'/';
     } else {
@@ -324,7 +323,8 @@ final class AphrontFormPolicyControl extends AphrontFormControl {
         javelin_tag(
           'a',
           array(
-            'class' => 'grey button dropdown has-icon policy-control',
+            'class' => 'button button-grey dropdown has-icon has-text '.
+              'policy-control',
             'href' => '#',
             'mustcapture' => true,
             'sigil' => 'policy-control',
@@ -344,15 +344,6 @@ final class AphrontFormPolicyControl extends AphrontFormControl {
               )),
           )),
         $input,
-      ));
-
-    return AphrontFormSelectControl::renderSelectTag(
-      $this->getValue(),
-      $this->getOptions(),
-      array(
-        'name'      => $this->getName(),
-        'disabled'  => $this->getDisabled() ? 'disabled' : null,
-        'id'        => $this->getID(),
       ));
   }
 

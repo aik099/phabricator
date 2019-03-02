@@ -188,14 +188,14 @@ final class ConpherenceViewController extends
     } else {
       // user not logged in so give them a login button.
       $login_href = id(new PhutilURI('/auth/start/'))
-        ->setQueryParam('next', '/'.$conpherence->getMonogram());
+        ->replaceQueryParam('next', '/'.$conpherence->getMonogram());
       return id(new PHUIFormLayoutView())
         ->addClass('login-to-participate')
         ->appendInstructions(pht('Log in to join this room and participate.'))
         ->appendChild(
           id(new PHUIButtonView())
           ->setTag('a')
-          ->setText(pht('Login to Participate'))
+          ->setText(pht('Log In to Participate'))
           ->setHref((string)$login_href));
     }
   }

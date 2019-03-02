@@ -10,7 +10,8 @@ final class FundInitiative extends FundDAO
     PhabricatorFlaggableInterface,
     PhabricatorTokenReceiverInterface,
     PhabricatorDestructibleInterface,
-    PhabricatorFulltextInterface {
+    PhabricatorFulltextInterface,
+    PhabricatorFerretInterface {
 
   protected $name;
   protected $ownerPHID;
@@ -159,19 +160,8 @@ final class FundInitiative extends FundDAO
     return new FundInitiativeEditor();
   }
 
-  public function getApplicationTransactionObject() {
-    return $this;
-  }
-
   public function getApplicationTransactionTemplate() {
     return new FundInitiativeTransaction();
-  }
-
-  public function willRenderTimeline(
-    PhabricatorApplicationTransactionView $timeline,
-    AphrontRequest $request) {
-
-    return $timeline;
   }
 
 
@@ -210,6 +200,14 @@ final class FundInitiative extends FundDAO
 
   public function newFulltextEngine() {
     return new FundInitiativeFulltextEngine();
+  }
+
+
+/* -(  PhabricatorFerretInterface  )----------------------------------------- */
+
+
+  public function newFerretEngine() {
+    return new FundInitiativeFerretEngine();
   }
 
 }

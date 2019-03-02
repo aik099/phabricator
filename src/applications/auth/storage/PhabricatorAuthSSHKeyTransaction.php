@@ -15,10 +15,6 @@ final class PhabricatorAuthSSHKeyTransaction
     return PhabricatorAuthSSHKeyPHIDType::TYPECONST;
   }
 
-  public function getApplicationTransactionCommentObject() {
-    return null;
-  }
-
   public function getTitle() {
     $author_phid = $this->getAuthorPHID();
 
@@ -43,11 +39,11 @@ final class PhabricatorAuthSSHKeyTransaction
       case self::TYPE_DEACTIVATE:
         if ($new) {
           return pht(
-            '%s deactivated this key.',
+            '%s revoked this key.',
             $this->renderHandleLink($author_phid));
         } else {
           return pht(
-            '%s activated this key.',
+            '%s reinstated this key.',
             $this->renderHandleLink($author_phid));
         }
 

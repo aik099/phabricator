@@ -46,15 +46,16 @@ final class PhabricatorManiphestApplication extends PhabricatorApplication {
     return array(
       '/T(?P<id>[1-9]\d*)' => 'ManiphestTaskDetailController',
       '/maniphest/' => array(
-        '(?:query/(?P<queryKey>[^/]+)/)?' => 'ManiphestTaskListController',
+        $this->getQueryRoutePattern() => 'ManiphestTaskListController',
         'report/(?:(?P<view>\w+)/)?' => 'ManiphestReportController',
-        'batch/' => 'ManiphestBatchEditController',
+        $this->getBulkRoutePattern('bulk/') => 'ManiphestBulkEditController',
         'task/' => array(
           $this->getEditRoutePattern('edit/')
             => 'ManiphestTaskEditController',
+          'subtask/(?P<id>[1-9]\d*)/' => 'ManiphestTaskSubtaskController',
         ),
-        'export/(?P<key>[^/]+)/' => 'ManiphestExportController',
         'subpriority/' => 'ManiphestSubpriorityController',
+        'graph/(?P<id>[1-9]\d*)/' => 'ManiphestTaskGraphController',
       ),
     );
   }
@@ -86,11 +87,6 @@ final class PhabricatorManiphestApplication extends PhabricatorApplication {
         'template' => ManiphestTaskPHIDType::TYPECONST,
         'capability' => PhabricatorPolicyCapability::CAN_EDIT,
       ),
-      ManiphestEditStatusCapability::CAPABILITY => array(),
-      ManiphestEditAssignCapability::CAPABILITY => array(),
-      ManiphestEditPoliciesCapability::CAPABILITY => array(),
-      ManiphestEditPriorityCapability::CAPABILITY => array(),
-      ManiphestEditProjectsCapability::CAPABILITY => array(),
       ManiphestBulkEditCapability::CAPABILITY => array(),
     );
   }

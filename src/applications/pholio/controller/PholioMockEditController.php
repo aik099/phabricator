@@ -23,17 +23,15 @@ final class PholioMockEditController extends PholioController {
       }
 
       $title = pht('Edit Mock: %s', $mock->getName());
-      $header_icon = 'fa-pencil';
 
       $is_new = false;
-      $mock_images = $mock->getImages();
+      $mock_images = $mock->getActiveImages();
       $files = mpull($mock_images, 'getFile');
       $mock_images = mpull($mock_images, null, 'getFilePHID');
     } else {
       $mock = PholioMock::initializeNewMock($viewer);
 
       $title = pht('Create Mock');
-      $header_icon = 'fa-plus-square';
 
       $is_new = true;
       $files = array();
@@ -142,29 +140,35 @@ final class PholioMockEditController extends PholioController {
         $sequence = $sequence_map[$file_phid];
 
         if ($replaces_image_phid) {
-          $replace_image = id(new PholioImage())
+          $replace_image = PholioImage::initializeNewImage()
+            ->setAuthorPHID($viewer->getPHID())
             ->setReplacesImagePHID($replaces_image_phid)
-            ->setFilePhid($file_phid)
+            ->setFilePHID($file_phid)
             ->attachFile($file)
             ->setName(strlen($title) ? $title : $file->getName())
             ->setDescription($description)
-            ->setSequence($sequence);
+            ->setSequence($sequence)
+            ->save();
+
           $xactions[] = id(new PholioTransaction())
-            ->setTransactionType(
-              PholioImageReplaceTransaction::TRANSACTIONTYPE)
-            ->setNewValue($replace_image);
+            ->setTransactionType(PholioImageReplaceTransaction::TRANSACTIONTYPE)
+            ->setNewValue($replace_image->getPHID());
+
           $posted_mock_images[] = $replace_image;
         } else if (!$existing_image) { // this is an add
-          $add_image = id(new PholioImage())
-            ->setFilePhid($file_phid)
+          $add_image = PholioImage::initializeNewImage()
+            ->setAuthorPHID($viewer->getPHID())
+            ->setFilePHID($file_phid)
             ->attachFile($file)
             ->setName(strlen($title) ? $title : $file->getName())
             ->setDescription($description)
-            ->setSequence($sequence);
+            ->setSequence($sequence)
+            ->save();
+
           $xactions[] = id(new PholioTransaction())
             ->setTransactionType(PholioImageFileTransaction::TRANSACTIONTYPE)
             ->setNewValue(
-              array('+' => array($add_image)));
+              array('+' => array($add_image->getPHID())));
           $posted_mock_images[] = $add_image;
         } else {
           $xactions[] = id(new PholioTransaction())
@@ -191,7 +195,7 @@ final class PholioMockEditController extends PholioController {
           $xactions[] = id(new PholioTransaction())
             ->setTransactionType(PholioImageFileTransaction::TRANSACTIONTYPE)
             ->setNewValue(
-              array('-' => array($mock_image)));
+              array('-' => array($mock_image->getPHID())));
         }
       }
 
@@ -202,15 +206,12 @@ final class PholioMockEditController extends PholioController {
           ->setMetadataValue('edge:type', $proj_edge_type)
           ->setNewValue(array('=' => array_fuse($v_projects)));
 
-        $mock->openTransaction();
         $editor = id(new PholioMockEditor())
           ->setContentSourceFromRequest($request)
           ->setContinueOnNoEffect(true)
           ->setActor($viewer);
 
         $xactions = $editor->applyTransactions($mock, $xactions);
-
-        $mock->saveTransaction();
 
         return id(new AphrontRedirectResponse())
           ->setURI('/M'.$mock->getID());
@@ -347,9 +348,9 @@ final class PholioMockEditController extends PholioController {
       ->appendChild($submit);
 
     $form_box = id(new PHUIObjectBoxView())
-      ->setHeaderText(pht('Mock'))
+      ->setHeaderText($title)
       ->setFormErrors($errors)
-      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
+      ->setBackground(PHUIObjectBoxView::WHITE_CONFIG)
       ->setForm($form);
 
     $crumbs = $this->buildApplicationCrumbs();
@@ -359,12 +360,7 @@ final class PholioMockEditController extends PholioController {
     $crumbs->addTextCrumb($title);
     $crumbs->setBorder(true);
 
-    $header = id(new PHUIHeaderView())
-      ->setHeader($title)
-      ->setHeaderIcon($header_icon);
-
     $view = id(new PHUITwoColumnView())
-      ->setHeader($header)
       ->setFooter($form_box);
 
     return $this->newPage()

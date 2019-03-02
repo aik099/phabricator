@@ -15,7 +15,8 @@ final class PhabricatorRepositorySearchEngine
     return id(new PhabricatorRepositoryQuery())
       ->needProjectPHIDs(true)
       ->needCommitCounts(true)
-      ->needMostRecentCommits(true);
+      ->needMostRecentCommits(true)
+      ->needProfileImage(true);
   }
 
   protected function buildCustomSearchFields() {
@@ -23,9 +24,9 @@ final class PhabricatorRepositorySearchEngine
       id(new PhabricatorSearchStringListField())
         ->setLabel(pht('Callsigns'))
         ->setKey('callsigns'),
-      id(new PhabricatorSearchTextField())
-        ->setLabel(pht('Name Contains'))
-        ->setKey('name'),
+      id(new PhabricatorSearchStringListField())
+        ->setLabel(pht('Short Names'))
+        ->setKey('shortNames'),
       id(new PhabricatorSearchSelectField())
         ->setLabel(pht('Status'))
         ->setKey('status')
@@ -43,6 +44,15 @@ final class PhabricatorRepositorySearchEngine
         ->setKey('uris')
         ->setDescription(
           pht('Search for repositories by clone/checkout URI.')),
+      id(new PhabricatorPHIDsSearchField())
+        ->setLabel(pht('Services'))
+        ->setKey('almanacServicePHIDs')
+        ->setAliases(
+          array(
+            'almanacServicePHID',
+            'almanacService',
+            'almanacServices',
+          )),
     );
   }
 
@@ -51,6 +61,10 @@ final class PhabricatorRepositorySearchEngine
 
     if ($map['callsigns']) {
       $query->withCallsigns($map['callsigns']);
+    }
+
+    if ($map['shortNames']) {
+      $query->withSlugs($map['shortNames']);
     }
 
     if ($map['status']) {
@@ -71,12 +85,12 @@ final class PhabricatorRepositorySearchEngine
       $query->withTypes($map['types']);
     }
 
-    if (strlen($map['name'])) {
-      $query->withNameContains($map['name']);
-    }
-
     if ($map['uris']) {
       $query->withURIs($map['uris']);
+    }
+
+    if ($map['almanacServicePHIDs']) {
+      $query->withAlmanacServicePHIDs($map['almanacServicePHIDs']);
     }
 
     return $query;
@@ -165,7 +179,8 @@ final class PhabricatorRepositorySearchEngine
         ->setObject($repository)
         ->setHeader($repository->getName())
         ->setObjectName($repository->getMonogram())
-        ->setHref($repository->getURI());
+        ->setHref($repository->getURI())
+        ->setImageURI($repository->getProfileImageURI());
 
       $commit = $repository->getMostRecentCommit();
       if ($commit) {

@@ -167,6 +167,7 @@ final class DiffusionLintController extends DiffusionController {
         'path'   => true,
         'view'   => 'lint',
       ));
+    $crumbs->setBorder(true);
 
     if ($drequest) {
       $title[] = $drequest->getRepository()->getDisplayName();
@@ -178,7 +179,7 @@ final class DiffusionLintController extends DiffusionController {
       $branch = $drequest->loadBranch();
 
       $header = id(new PHUIHeaderView())
-        ->setHeader($this->renderPathLinks($drequest, 'lint'))
+        ->setHeader(pht('Lint: %s', $this->renderPathLinks($drequest, 'lint')))
         ->setUser($viewer)
         ->setHeaderIcon('fa-code');
       $actions = $this->buildActionView($drequest);
@@ -275,13 +276,13 @@ final class DiffusionLintController extends DiffusionController {
             array_keys($branch),
             $path->getPath());
           if ($path->getExcluded()) {
-            $where[] = 'NOT '.$condition;
+            $where[] = qsprintf($conn, 'NOT %Q', $condition);
           } else {
             $or[] = $condition;
           }
         }
       }
-      $where[] = '('.implode(' OR ', $or).')';
+      $where[] = qsprintf($conn, '%LO', $or);
     }
 
     return queryfx_all(
@@ -295,11 +296,11 @@ final class DiffusionLintController extends DiffusionController {
           COUNT(DISTINCT path) AS files,
           COUNT(*) AS n
         FROM %T
-        WHERE %Q
+        WHERE %LA
         GROUP BY branchID, code
         ORDER BY n DESC',
       PhabricatorRepository::TABLE_LINTMESSAGE,
-      implode(' AND ', $where));
+      $where);
   }
 
   protected function buildActionView(DiffusionRequest $drequest) {
@@ -465,6 +466,7 @@ final class DiffusionLintController extends DiffusionController {
         'path'   => true,
         'view'   => 'lint',
       ));
+    $crumbs->setBorder(true);
 
     $header = id(new PHUIHeaderView())
       ->setHeader(pht('Lint: %s', $drequest->getRepository()->getDisplayName()))
@@ -524,10 +526,10 @@ final class DiffusionLintController extends DiffusionController {
       $conn,
       'SELECT *
         FROM %T
-        WHERE %Q
+        WHERE %LA
         ORDER BY path, code, line LIMIT %d OFFSET %d',
       PhabricatorRepository::TABLE_LINTMESSAGE,
-      implode(' AND ', $where),
+      $where,
       $limit,
       $offset);
   }

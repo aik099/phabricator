@@ -113,6 +113,10 @@ final class AphrontFormTokenizerControl extends AphrontFormControl {
         'icons' => mpull($tokens, 'getIcon', 'getKey'),
         'types' => mpull($tokens, 'getTokenType', 'getKey'),
         'colors' => mpull($tokens, 'getColor', 'getKey'),
+        'availabilityColors' => mpull(
+          $tokens,
+          'getAvailabilityColor',
+          'getKey'),
         'limit' => $this->limit,
         'username' => $username,
         'placeholder' => $placeholder,

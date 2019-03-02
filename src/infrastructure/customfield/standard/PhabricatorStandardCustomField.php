@@ -18,6 +18,7 @@ abstract class PhabricatorStandardCustomField
   private $isCopyable;
   private $hasStorageValue;
   private $isBuiltin;
+  private $isEnabled = true;
 
   abstract public function getFieldType();
 
@@ -173,6 +174,19 @@ abstract class PhabricatorStandardCustomField
 
   public function getRawStandardFieldKey() {
     return $this->rawKey;
+  }
+
+  public function setIsEnabled($is_enabled) {
+    $this->isEnabled = $is_enabled;
+    return $this;
+  }
+
+  public function getIsEnabled() {
+    return $this->isEnabled;
+  }
+
+  public function isFieldEnabled() {
+    return $this->getIsEnabled();
   }
 
 
@@ -496,5 +510,8 @@ abstract class PhabricatorStandardCustomField
     return $this->getFieldValue();
   }
 
+  public function newExportData() {
+    return $this->getFieldValue();
+  }
 
 }

@@ -19,7 +19,9 @@ final class PhabricatorUser
     PhabricatorFlaggableInterface,
     PhabricatorApplicationTransactionInterface,
     PhabricatorFulltextInterface,
-    PhabricatorConduitResultInterface {
+    PhabricatorFerretInterface,
+    PhabricatorConduitResultInterface,
+    PhabricatorAuthPasswordHashInterface {
 
   const SESSION_TABLE = 'phabricator_session';
   const NAMETOKEN_TABLE = 'user_nametoken';
@@ -27,8 +29,6 @@ final class PhabricatorUser
 
   protected $userName;
   protected $realName;
-  protected $passwordSalt;
-  protected $passwordHash;
   protected $profileImagePHID;
   protected $defaultProfileImagePHID;
   protected $defaultProfileImageVersion;
@@ -215,8 +215,6 @@ final class PhabricatorUser
       self::CONFIG_COLUMN_SCHEMA => array(
         'userName' => 'sort64',
         'realName' => 'text128',
-        'passwordSalt' => 'text32?',
-        'passwordHash' => 'text128?',
         'profileImagePHID' => 'phid?',
         'conduitCertificate' => 'text255',
         'isSystemAgent' => 'bool',
@@ -261,30 +259,16 @@ final class PhabricatorUser
       PhabricatorPeopleUserPHIDType::TYPECONST);
   }
 
-  public function setPassword(PhutilOpaqueEnvelope $envelope) {
-    if (!$this->getPHID()) {
-      throw new Exception(
-        pht(
-          'You can not set a password for an unsaved user because their PHID '.
-          'is a salt component in the password hash.'));
-    }
-
-    if (!strlen($envelope->openEnvelope())) {
-      $this->setPasswordHash('');
-    } else {
-      $this->setPasswordSalt(md5(Filesystem::readRandomBytes(32)));
-      $hash = $this->hashPassword($envelope);
-      $this->setPasswordHash($hash->openEnvelope());
-    }
-    return $this;
-  }
-
   public function getMonogram() {
     return '@'.$this->getUsername();
   }
 
   public function isLoggedIn() {
     return !($this->getPHID() === null);
+  }
+
+  public function saveWithoutIndex() {
+    return parent::save();
   }
 
   public function save() {
@@ -296,7 +280,7 @@ final class PhabricatorUser
       $this->setAccountSecret(Filesystem::readRandomCharacters(64));
     }
 
-    $result = parent::save();
+    $result = $this->saveWithoutIndex();
 
     if ($this->profile) {
       $this->profile->save();
@@ -322,145 +306,20 @@ final class PhabricatorUser
     return ($this->session !== self::ATTACHABLE);
   }
 
+  public function hasHighSecuritySession() {
+    if (!$this->hasSession()) {
+      return false;
+    }
+
+    return $this->getSession()->isHighSecuritySession();
+  }
+
   private function generateConduitCertificate() {
     return Filesystem::readRandomCharacters(255);
   }
 
-  public function comparePassword(PhutilOpaqueEnvelope $envelope) {
-    if (!strlen($envelope->openEnvelope())) {
-      return false;
-    }
-    if (!strlen($this->getPasswordHash())) {
-      return false;
-    }
-
-    return PhabricatorPasswordHasher::comparePassword(
-      $this->getPasswordHashInput($envelope),
-      new PhutilOpaqueEnvelope($this->getPasswordHash()));
-  }
-
-  private function getPasswordHashInput(PhutilOpaqueEnvelope $password) {
-    $input =
-      $this->getUsername().
-      $password->openEnvelope().
-      $this->getPHID().
-      $this->getPasswordSalt();
-
-    return new PhutilOpaqueEnvelope($input);
-  }
-
-  private function hashPassword(PhutilOpaqueEnvelope $password) {
-    $hasher = PhabricatorPasswordHasher::getBestHasher();
-
-    $input_envelope = $this->getPasswordHashInput($password);
-    return $hasher->getPasswordHashForStorage($input_envelope);
-  }
-
-  const CSRF_CYCLE_FREQUENCY  = 3600;
-  const CSRF_SALT_LENGTH      = 8;
-  const CSRF_TOKEN_LENGTH     = 16;
-  const CSRF_BREACH_PREFIX    = 'B@';
-
   const EMAIL_CYCLE_FREQUENCY = 86400;
   const EMAIL_TOKEN_LENGTH    = 24;
-
-  private function getRawCSRFToken($offset = 0) {
-    return $this->generateToken(
-      time() + (self::CSRF_CYCLE_FREQUENCY * $offset),
-      self::CSRF_CYCLE_FREQUENCY,
-      PhabricatorEnv::getEnvConfig('phabricator.csrf-key'),
-      self::CSRF_TOKEN_LENGTH);
-  }
-
-  public function getCSRFToken() {
-    if ($this->isOmnipotent()) {
-      // We may end up here when called from the daemons. The omnipotent user
-      // has no meaningful CSRF token, so just return `null`.
-      return null;
-    }
-
-    if ($this->csrfSalt === null) {
-      $this->csrfSalt = Filesystem::readRandomCharacters(
-        self::CSRF_SALT_LENGTH);
-    }
-
-    $salt = $this->csrfSalt;
-
-    // Generate a token hash to mitigate BREACH attacks against SSL. See
-    // discussion in T3684.
-    $token = $this->getRawCSRFToken();
-    $hash = PhabricatorHash::weakDigest($token, $salt);
-    return self::CSRF_BREACH_PREFIX.$salt.substr(
-        $hash, 0, self::CSRF_TOKEN_LENGTH);
-  }
-
-  public function validateCSRFToken($token) {
-    // We expect a BREACH-mitigating token. See T3684.
-    $breach_prefix = self::CSRF_BREACH_PREFIX;
-    $breach_prelen = strlen($breach_prefix);
-    if (strncmp($token, $breach_prefix, $breach_prelen) !== 0) {
-      return false;
-    }
-
-    $salt = substr($token, $breach_prelen, self::CSRF_SALT_LENGTH);
-    $token = substr($token, $breach_prelen + self::CSRF_SALT_LENGTH);
-
-    // When the user posts a form, we check that it contains a valid CSRF token.
-    // Tokens cycle each hour (every CSRF_CYLCE_FREQUENCY seconds) and we accept
-    // either the current token, the next token (users can submit a "future"
-    // token if you have two web frontends that have some clock skew) or any of
-    // the last 6 tokens. This means that pages are valid for up to 7 hours.
-    // There is also some Javascript which periodically refreshes the CSRF
-    // tokens on each page, so theoretically pages should be valid indefinitely.
-    // However, this code may fail to run (if the user loses their internet
-    // connection, or there's a JS problem, or they don't have JS enabled).
-    // Choosing the size of the window in which we accept old CSRF tokens is
-    // an issue of balancing concerns between security and usability. We could
-    // choose a very narrow (e.g., 1-hour) window to reduce vulnerability to
-    // attacks using captured CSRF tokens, but it's also more likely that real
-    // users will be affected by this, e.g. if they close their laptop for an
-    // hour, open it back up, and try to submit a form before the CSRF refresh
-    // can kick in. Since the user experience of submitting a form with expired
-    // CSRF is often quite bad (you basically lose data, or it's a big pain to
-    // recover at least) and I believe we gain little additional protection
-    // by keeping the window very short (the overwhelming value here is in
-    // preventing blind attacks, and most attacks which can capture CSRF tokens
-    // can also just capture authentication information [sniffing networks]
-    // or act as the user [xss]) the 7 hour default seems like a reasonable
-    // balance. Other major platforms have much longer CSRF token lifetimes,
-    // like Rails (session duration) and Django (forever), which suggests this
-    // is a reasonable analysis.
-    $csrf_window = 6;
-
-    for ($ii = -$csrf_window; $ii <= 1; $ii++) {
-      $valid = $this->getRawCSRFToken($ii);
-
-      $digest = PhabricatorHash::weakDigest($valid, $salt);
-      $digest = substr($digest, 0, self::CSRF_TOKEN_LENGTH);
-      if (phutil_hashes_are_identical($digest, $token)) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  private function generateToken($epoch, $frequency, $key, $len) {
-    if ($this->getPHID()) {
-      $vec = $this->getPHID().$this->getAccountSecret();
-    } else {
-      $vec = $this->getAlternateCSRFString();
-    }
-
-    if ($this->hasSession()) {
-      $vec = $vec.$this->getSession()->getSessionKey();
-    }
-
-    $time_block = floor($epoch / $frequency);
-    $vec = $vec.$key.$time_block;
-
-    return substr(PhabricatorHash::weakDigest($vec), 0, $len);
-  }
 
   public function getUserProfile() {
     return $this->assertAttached($this->profile);
@@ -496,11 +355,9 @@ final class PhabricatorUser
   }
 
   public function loadPrimaryEmail() {
-    return $this->loadOneRelative(
-      new PhabricatorUserEmail(),
-      'userPHID',
-      'getPHID',
-      '(isPrimary = 1)');
+    return id(new PhabricatorUserEmail())->loadOneWhere(
+      'userPHID = %s AND isPrimary = 1',
+      $this->getPHID());
   }
 
 
@@ -663,15 +520,6 @@ final class PhabricatorUser
     return (string)$uri;
   }
 
-  public function getAlternateCSRFString() {
-    return $this->assertAttached($this->alternateCSRFString);
-  }
-
-  public function attachAlternateCSRFString($string) {
-    $this->alternateCSRFString = $string;
-    return $this;
-  }
-
   /**
    * Populate the nametoken table, which used to fetch typeahead results. When
    * a user types "linc", we want to match "Abraham Lincoln" from on-demand
@@ -701,114 +549,15 @@ final class PhabricatorUser
     if ($sql) {
       queryfx(
         $conn_w,
-        'INSERT INTO %T (userID, token) VALUES %Q',
+        'INSERT INTO %T (userID, token) VALUES %LQ',
         $table,
-        implode(', ', $sql));
+        $sql);
     }
-  }
-
-  public function sendWelcomeEmail(PhabricatorUser $admin) {
-    if (!$this->canEstablishWebSessions()) {
-      throw new Exception(
-        pht(
-          'Can not send welcome mail to users who can not establish '.
-          'web sessions!'));
-    }
-
-    $admin_username = $admin->getUserName();
-    $admin_realname = $admin->getRealName();
-    $user_username = $this->getUserName();
-    $is_serious = PhabricatorEnv::getEnvConfig('phabricator.serious-business');
-
-    $base_uri = PhabricatorEnv::getProductionURI('/');
-
-    $engine = new PhabricatorAuthSessionEngine();
-    $uri = $engine->getOneTimeLoginURI(
-      $this,
-      $this->loadPrimaryEmail(),
-      PhabricatorAuthSessionEngine::ONETIME_WELCOME);
-
-    $body = pht(
-      "Welcome to Phabricator!\n\n".
-      "%s (%s) has created an account for you.\n\n".
-      "  Username: %s\n\n".
-      "To login to Phabricator, follow this link and set a password:\n\n".
-      "  %s\n\n".
-      "After you have set a password, you can login in the future by ".
-      "going here:\n\n".
-      "  %s\n",
-      $admin_username,
-      $admin_realname,
-      $user_username,
-      $uri,
-      $base_uri);
-
-    if (!$is_serious) {
-      $body .= sprintf(
-        "\n%s\n",
-        pht("Love,\nPhabricator"));
-    }
-
-    $mail = id(new PhabricatorMetaMTAMail())
-      ->addTos(array($this->getPHID()))
-      ->setForceDelivery(true)
-      ->setSubject(pht('[Phabricator] Welcome to Phabricator'))
-      ->setBody($body)
-      ->saveAndSend();
-  }
-
-  public function sendUsernameChangeEmail(
-    PhabricatorUser $admin,
-    $old_username) {
-
-    $admin_username = $admin->getUserName();
-    $admin_realname = $admin->getRealName();
-    $new_username = $this->getUserName();
-
-    $password_instructions = null;
-    if (PhabricatorPasswordAuthProvider::getPasswordProvider()) {
-      $engine = new PhabricatorAuthSessionEngine();
-      $uri = $engine->getOneTimeLoginURI(
-        $this,
-        null,
-        PhabricatorAuthSessionEngine::ONETIME_USERNAME);
-      $password_instructions = sprintf(
-        "%s\n\n  %s\n\n%s\n",
-        pht(
-          "If you use a password to login, you'll need to reset it ".
-          "before you can login again. You can reset your password by ".
-          "following this link:"),
-        $uri,
-        pht(
-          "And, of course, you'll need to use your new username to login ".
-          "from now on. If you use OAuth to login, nothing should change."));
-    }
-
-    $body = sprintf(
-      "%s\n\n  %s\n  %s\n\n%s",
-      pht(
-        '%s (%s) has changed your Phabricator username.',
-        $admin_username,
-        $admin_realname),
-      pht(
-        'Old Username: %s',
-        $old_username),
-      pht(
-        'New Username: %s',
-        $new_username),
-      $password_instructions);
-
-    $mail = id(new PhabricatorMetaMTAMail())
-      ->addTos(array($this->getPHID()))
-      ->setForceDelivery(true)
-      ->setSubject(pht('[Phabricator] Username Changed'))
-      ->setBody($body)
-      ->saveAndSend();
   }
 
   public static function describeValidUsername() {
     return pht(
-      'Usernames must contain only numbers, letters, period, underscore and '.
+      'Usernames must contain only numbers, letters, period, underscore, and '.
       'hyphen, and can not end with a period. They must have no more than %d '.
       'characters.',
       new PhutilNumber(self::MAXIMUM_USERNAME_LENGTH));
@@ -1110,9 +859,15 @@ final class PhabricatorUser
    * @task factors
    */
   public function updateMultiFactorEnrollment() {
-    $factors = id(new PhabricatorAuthFactorConfig())->loadAllWhere(
-      'userPHID = %s',
-      $this->getPHID());
+    $factors = id(new PhabricatorAuthFactorConfigQuery())
+      ->setViewer($this)
+      ->withUserPHIDs(array($this->getPHID()))
+      ->withFactorProviderStatuses(
+        array(
+          PhabricatorAuthFactorProviderStatus::STATUS_ACTIVE,
+          PhabricatorAuthFactorProviderStatus::STATUS_DEPRECATED,
+        ))
+      ->execute();
 
     $enrolled = count($factors) ? 1 : 0;
     if ($enrolled !== $this->isEnrolledInMultiFactor) {
@@ -1179,7 +934,7 @@ final class PhabricatorUser
   /**
    * Get a scalar string identifying this user.
    *
-   * This is similar to using the PHID, but distinguishes between ominpotent
+   * This is similar to using the PHID, but distinguishes between omnipotent
    * and public users explicitly. This allows safe construction of cache keys
    * or cache buckets which do not conflate public and omnipotent users.
    *
@@ -1256,6 +1011,58 @@ final class PhabricatorUser
     return $this->assertAttached($this->badgePHIDs);
   }
 
+/* -(  CSRF  )--------------------------------------------------------------- */
+
+
+  public function getCSRFToken() {
+    if ($this->isOmnipotent()) {
+      // We may end up here when called from the daemons. The omnipotent user
+      // has no meaningful CSRF token, so just return `null`.
+      return null;
+    }
+
+    return $this->newCSRFEngine()
+      ->newToken();
+  }
+
+  public function validateCSRFToken($token) {
+    return $this->newCSRFengine()
+      ->isValidToken($token);
+  }
+
+  public function getAlternateCSRFString() {
+    return $this->assertAttached($this->alternateCSRFString);
+  }
+
+  public function attachAlternateCSRFString($string) {
+    $this->alternateCSRFString = $string;
+    return $this;
+  }
+
+  private function newCSRFEngine() {
+    if ($this->getPHID()) {
+      $vec = $this->getPHID().$this->getAccountSecret();
+    } else {
+      $vec = $this->getAlternateCSRFString();
+    }
+
+    if ($this->hasSession()) {
+      $vec = $vec.$this->getSession()->getSessionKey();
+    }
+
+    $engine = new PhabricatorAuthCSRFEngine();
+
+    if ($this->csrfSalt === null) {
+      $this->csrfSalt = $engine->newSalt();
+    }
+
+    $engine
+      ->setSalt($this->csrfSalt)
+      ->setSecret(new PhutilOpaqueEnvelope($vec));
+
+    return $engine;
+  }
+
 
 /* -(  PhabricatorPolicyInterface  )----------------------------------------- */
 
@@ -1324,9 +1131,10 @@ final class PhabricatorUser
     $this->openTransaction();
       $this->delete();
 
-      $externals = id(new PhabricatorExternalAccount())->loadAllWhere(
-        'userPHID = %s',
-        $this->getPHID());
+      $externals = id(new PhabricatorExternalAccountQuery())
+        ->setViewer($engine->getViewer())
+        ->withUserPHIDs(array($this->getPHID()))
+        ->execute();
       foreach ($externals as $external) {
         $external->delete();
       }
@@ -1389,7 +1197,7 @@ final class PhabricatorUser
       return '/settings/panel/ssh/';
     } else {
       // Otherwise, take them to the administrative panel for this user.
-      return '/settings/'.$this->getID().'/panel/ssh/';
+      return '/settings/user/'.$this->getUsername().'/page/ssh/';
     }
   }
 
@@ -1408,21 +1216,11 @@ final class PhabricatorUser
 
 
   public function getApplicationTransactionEditor() {
-    return new PhabricatorUserProfileEditor();
-  }
-
-  public function getApplicationTransactionObject() {
-    return $this;
+    return new PhabricatorUserTransactionEditor();
   }
 
   public function getApplicationTransactionTemplate() {
     return new PhabricatorUserTransaction();
-  }
-
-  public function willRenderTimeline(
-    PhabricatorApplicationTransactionView $timeline,
-    AphrontRequest $request) {
-    return $timeline;
   }
 
 
@@ -1431,6 +1229,14 @@ final class PhabricatorUser
 
   public function newFulltextEngine() {
     return new PhabricatorUserFulltextEngine();
+  }
+
+
+/* -(  PhabricatorFerretInterface  )----------------------------------------- */
+
+
+  public function newFerretEngine() {
+    return new PhabricatorUserFerretEngine();
   }
 
 
@@ -1450,7 +1256,7 @@ final class PhabricatorUser
       id(new PhabricatorConduitSearchFieldSpecification())
         ->setKey('roles')
         ->setType('list<string>')
-        ->setDescription(pht('List of acccount roles.')),
+        ->setDescription(pht('List of account roles.')),
     );
   }
 
@@ -1493,7 +1299,10 @@ final class PhabricatorUser
   }
 
   public function getConduitSearchAttachments() {
-    return array();
+    return array(
+      id(new PhabricatorPeopleAvailabilitySearchEngineAttachment())
+        ->setAttachmentKey('availability'),
+    );
   }
 
 
@@ -1606,5 +1415,112 @@ final class PhabricatorUser
 
     return $variables[$variable_key];
   }
+
+/* -(  PhabricatorAuthPasswordHashInterface  )------------------------------- */
+
+
+  public function newPasswordDigest(
+    PhutilOpaqueEnvelope $envelope,
+    PhabricatorAuthPassword $password) {
+
+    // Before passwords are hashed, they are digested. The goal of digestion
+    // is twofold: to reduce the length of very long passwords to something
+    // reasonable; and to salt the password in case the best available hasher
+    // does not include salt automatically.
+
+    // Users may choose arbitrarily long passwords, and attackers may try to
+    // attack the system by probing it with very long passwords. When large
+    // inputs are passed to hashers -- which are intentionally slow -- it
+    // can result in unacceptably long runtimes. The classic attack here is
+    // to try to log in with a 64MB password and see if that locks up the
+    // machine for the next century. By digesting passwords to a standard
+    // length first, the length of the raw input does not impact the runtime
+    // of the hashing algorithm.
+
+    // Some hashers like bcrypt are self-salting, while other hashers are not.
+    // Applying salt while digesting passwords ensures that hashes are salted
+    // whether we ultimately select a self-salting hasher or not.
+
+    // For legacy compatibility reasons, old VCS and Account password digest
+    // algorithms are significantly more complicated than necessary to achieve
+    // these goals. This is because they once used a different hashing and
+    // salting process. When we upgraded to the modern modular hasher
+    // infrastructure, we just bolted it onto the end of the existing pipelines
+    // so that upgrading didn't break all users' credentials.
+
+    // New implementations can (and, generally, should) safely select the
+    // simple HMAC SHA256 digest at the bottom of the function, which does
+    // everything that a digest callback should without any needless legacy
+    // baggage on top.
+
+    if ($password->getLegacyDigestFormat() == 'v1') {
+      switch ($password->getPasswordType()) {
+        case PhabricatorAuthPassword::PASSWORD_TYPE_VCS:
+          // Old VCS passwords use an iterated HMAC SHA1 as a digest algorithm.
+          // They originally used this as a hasher, but it became a digest
+          // algorithm once hashing was upgraded to include bcrypt.
+          $digest = $envelope->openEnvelope();
+          $salt = $this->getPHID();
+          for ($ii = 0; $ii < 1000; $ii++) {
+            $digest = PhabricatorHash::weakDigest($digest, $salt);
+          }
+          return new PhutilOpaqueEnvelope($digest);
+        case PhabricatorAuthPassword::PASSWORD_TYPE_ACCOUNT:
+          // Account passwords previously used this weird mess of salt and did
+          // not digest the input to a standard length.
+
+          // Beyond this being a weird special case, there are two actual
+          // problems with this, although neither are particularly severe:
+
+          // First, because we do not normalize the length of passwords, this
+          // algorithm may make us vulnerable to DOS attacks where an attacker
+          // attempts to use a very long input to slow down hashers.
+
+          // Second, because the username is part of the hash algorithm,
+          // renaming a user breaks their password. This isn't a huge deal but
+          // it's pretty silly. There's no security justification for this
+          // behavior, I just didn't think about the implication when I wrote
+          // it originally.
+
+          $parts = array(
+            $this->getUsername(),
+            $envelope->openEnvelope(),
+            $this->getPHID(),
+            $password->getPasswordSalt(),
+          );
+
+          return new PhutilOpaqueEnvelope(implode('', $parts));
+      }
+    }
+
+    // For passwords which do not have some crazy legacy reason to use some
+    // other digest algorithm, HMAC SHA256 is an excellent choice. It satisfies
+    // the digest requirements and is simple.
+
+    $digest = PhabricatorHash::digestHMACSHA256(
+      $envelope->openEnvelope(),
+      $password->getPasswordSalt());
+
+    return new PhutilOpaqueEnvelope($digest);
+  }
+
+  public function newPasswordBlocklist(
+    PhabricatorUser $viewer,
+    PhabricatorAuthPasswordEngine $engine) {
+
+    $list = array();
+    $list[] = $this->getUsername();
+    $list[] = $this->getRealName();
+
+    $emails = id(new PhabricatorUserEmail())->loadAllWhere(
+      'userPHID = %s',
+      $this->getPHID());
+    foreach ($emails as $email) {
+      $list[] = $email->getAddress();
+    }
+
+    return $list;
+  }
+
 
 }

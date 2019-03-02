@@ -23,14 +23,17 @@ final class PhabricatorCommentEditEngineExtension
     PhabricatorApplicationTransactionInterface $object) {
 
     $xaction = $object->getApplicationTransactionTemplate();
-
-    try {
-      $comment = $xaction->getApplicationTransactionCommentObject();
-    } catch (PhutilMethodNotImplementedException $ex) {
-      $comment = null;
-    }
+    $comment = $xaction->getApplicationTransactionCommentObject();
 
     return (bool)$comment;
+  }
+
+  public function newBulkEditGroups(PhabricatorEditEngine $engine) {
+    return array(
+      id(new PhabricatorBulkEditGroup())
+        ->setKey('comments')
+        ->setLabel(pht('Comments')),
+    );
   }
 
   public function buildCustomEditFields(
@@ -46,11 +49,10 @@ final class PhabricatorCommentEditEngineExtension
     $comment_field = id(new PhabricatorCommentEditField())
       ->setKey(self::EDITKEY)
       ->setLabel(pht('Comments'))
+      ->setBulkEditLabel(pht('Add comment'))
+      ->setBulkEditGroupKey('comments')
       ->setAliases(array('comments'))
-      ->setIsHidden(true)
-      ->setIsReorderable(false)
-      ->setIsDefaultable(false)
-      ->setIsLockable(false)
+      ->setIsFormField(false)
       ->setCanApplyWithoutEditCapability($is_interact)
       ->setTransactionType($comment_type)
       ->setConduitDescription(pht('Make comments.'))

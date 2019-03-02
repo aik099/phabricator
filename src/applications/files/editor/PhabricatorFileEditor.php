@@ -27,7 +27,7 @@ final class PhabricatorFileEditor
   }
 
   protected function getMailSubjectPrefix() {
-    return PhabricatorEnv::getEnvConfig('metamta.files.subject-prefix');
+    return pht('[File]');
   }
 
   protected function getMailTo(PhabricatorLiskDAO $object) {
@@ -47,8 +47,7 @@ final class PhabricatorFileEditor
     $name = $object->getName();
 
     return id(new PhabricatorMetaMTAMail())
-      ->setSubject("F{$id}: {$name}")
-      ->addHeader('Thread-Topic', "F{$id}");
+      ->setSubject("F{$id}: {$name}");
   }
 
   protected function buildMailBody(

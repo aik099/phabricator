@@ -137,6 +137,15 @@ abstract class PhabricatorStorageManagementWorkflow
 
     try {
       $err = $this->doAdjustSchemata($api, $unsafe);
+
+      // Analyze tables if we're not doing a dry run and adjustments are either
+      // all clear or have minor errors like surplus tables.
+      if (!$this->dryRun) {
+        $should_analyze = (($err == 0) || ($err == 2));
+        if ($should_analyze) {
+          $this->analyzeTables($api);
+        }
+      }
     } catch (Exception $ex) {
       $lock->unlock();
       throw $ex;
@@ -172,8 +181,8 @@ abstract class PhabricatorStorageManagementWorkflow
     if (!$this->force && !$api->isCharacterSetAvailable('utf8mb4')) {
       $message = pht(
         "You have an old version of MySQL (older than 5.5) which does not ".
-        "support the utf8mb4 character set. We strongly recomend upgrading to ".
-        "5.5 or newer.\n\n".
+        "support the utf8mb4 character set. We strongly recommend upgrading ".
+        "to 5.5 or newer.\n\n".
         "If you apply adjustments now and later update MySQL to 5.5 or newer, ".
         "you'll need to apply adjustments again (and they will take a long ".
         "time).\n\n".
@@ -348,28 +357,82 @@ abstract class PhabricatorStorageManagementWorkflow
                 }
 
                 if ($adjust['charset']) {
+                  switch ($adjust['charset']) {
+                    case 'binary':
+                      $charset_value = qsprintf($conn, 'binary');
+                      break;
+                    case 'utf8':
+                      $charset_value = qsprintf($conn, 'utf8');
+                      break;
+                    case 'utf8mb4':
+                      $charset_value = qsprintf($conn, 'utf8mb4');
+                      break;
+                    default:
+                      throw new Exception(
+                        pht(
+                          'Unsupported character set "%s".',
+                          $adjust['charset']));
+                  }
+
+                  switch ($adjust['collation']) {
+                    case 'binary':
+                      $collation_value = qsprintf($conn, 'binary');
+                      break;
+                    case 'utf8_general_ci':
+                      $collation_value = qsprintf($conn, 'utf8_general_ci');
+                      break;
+                    case 'utf8mb4_bin':
+                      $collation_value = qsprintf($conn, 'utf8mb4_bin');
+                      break;
+                    case 'utf8mb4_unicode_ci':
+                      $collation_value = qsprintf($conn, 'utf8mb4_unicode_ci');
+                      break;
+                    default:
+                      throw new Exception(
+                        pht(
+                          'Unsupported collation set "%s".',
+                          $adjust['collation']));
+                  }
+
                   $parts[] = qsprintf(
                     $conn,
                     'CHARACTER SET %Q COLLATE %Q',
-                    $adjust['charset'],
-                    $adjust['collation']);
+                    $charset_value,
+                    $collation_value);
                 }
+
+                if ($parts) {
+                  $parts = qsprintf($conn, '%LJ', $parts);
+                } else {
+                  $parts = qsprintf($conn, '');
+                }
+
+                if ($adjust['nullable']) {
+                  $nullable = qsprintf($conn, 'NULL');
+                } else {
+                  $nullable = qsprintf($conn, 'NOT NULL');
+                }
+
+                // TODO: We're using "%Z" here for the column type, which is
+                // technically unsafe. It would be nice to be able to use "%Q"
+                // instead, but this requires a fair amount of legwork to
+                // enumerate all column types.
 
                 queryfx(
                   $conn,
-                  'ALTER TABLE %T.%T MODIFY %T %Q %Q %Q',
+                  'ALTER TABLE %T.%T MODIFY %T %Z %Q %Q',
                   $adjust['database'],
                   $adjust['table'],
                   $adjust['name'],
                   $adjust['type'],
-                  implode(' ', $parts),
-                  $adjust['nullable'] ? 'NULL' : 'NOT NULL');
+                  $parts,
+                  $nullable);
               }
               break;
             case 'key':
               if (($phase == 'drop_keys') && $adjust['exists']) {
                 if ($adjust['name'] == 'PRIMARY') {
-                  $key_name = 'PRIMARY KEY';
+                  $key_name = qsprintf($conn, 'PRIMARY KEY');
                 } else {
                   $key_name = qsprintf($conn, 'KEY %T', $adjust['name']);
                 }
@@ -386,7 +449,7 @@ abstract class PhabricatorStorageManagementWorkflow
                 // Different keys need different creation syntax. Notable
                 // special cases are primary keys and fulltext keys.
                 if ($adjust['name'] == 'PRIMARY') {
-                  $key_name = 'PRIMARY KEY';
+                  $key_name = qsprintf($conn, 'PRIMARY KEY');
                 } else if ($adjust['indexType'] == 'FULLTEXT') {
                   $key_name = qsprintf($conn, 'FULLTEXT %T', $adjust['name']);
                 } else {
@@ -405,11 +468,11 @@ abstract class PhabricatorStorageManagementWorkflow
 
                 queryfx(
                   $conn,
-                  'ALTER TABLE %T.%T ADD %Q (%Q)',
+                  'ALTER TABLE %T.%T ADD %Q (%LK)',
                   $adjust['database'],
                   $adjust['table'],
                   $key_name,
-                  implode(', ', $adjust['columns']));
+                  $adjust['columns']);
               }
               break;
             default:
@@ -1154,13 +1217,67 @@ abstract class PhabricatorStorageManagementWorkflow
     // Although we're holding this lock on different databases so it could
     // have the same name on each as far as the database is concerned, the
     // locks would be the same within this process.
-    $ref_key = $api->getRef()->getRefKey();
-    $ref_hash = PhabricatorHash::digestForIndex($ref_key);
-    $lock_name = 'adjust('.$ref_hash.')';
+    $parameters = array(
+      'refKey' => $api->getRef()->getRefKey(),
+    );
 
-    return PhabricatorGlobalLock::newLock($lock_name)
+    // We disable logging for this lock because we may not have created the
+    // log table yet, or may need to adjust it.
+
+    return PhabricatorGlobalLock::newLock('adjust', $parameters)
       ->useSpecificConnection($api->getConn(null))
+      ->setDisableLogging(true)
       ->lock();
+  }
+
+  final protected function analyzeTables(
+    PhabricatorStorageManagementAPI $api) {
+
+    // Analyzing tables can sometimes have a significant effect on query
+    // performance, particularly for the fulltext ngrams tables. See T12819
+    // for some specific examples.
+
+    $conn = $api->getConn(null);
+
+    $patches = $this->getPatches();
+    $databases = $api->getDatabaseList($patches, true);
+
+    $this->logInfo(
+      pht('ANALYZE'),
+      pht('Analyzing tables...'));
+
+    $targets = array();
+    foreach ($databases as $database) {
+      queryfx($conn, 'USE %C', $database);
+      $tables = queryfx_all($conn, 'SHOW TABLE STATUS');
+      foreach ($tables as $table) {
+        $table_name = $table['Name'];
+
+        $targets[] = array(
+          'database' => $database,
+          'table' => $table_name,
+        );
+      }
+    }
+
+    $bar = id(new PhutilConsoleProgressBar())
+      ->setTotal(count($targets));
+    foreach ($targets as $target) {
+      queryfx(
+        $conn,
+        'ANALYZE TABLE %T.%T',
+        $target['database'],
+        $target['table']);
+
+      $bar->update(1);
+    }
+    $bar->done();
+
+    $this->logOkay(
+      pht('ANALYZED'),
+      pht(
+        'Analyzed %d table(s).',
+        count($targets)));
   }
 
 }

@@ -74,7 +74,15 @@ final class PhabricatorDashboard extends PhabricatorDashboardDAO
 
   public function setLayoutConfigFromObject(
     PhabricatorDashboardLayoutConfig $object) {
+
     $this->setLayoutConfig($object->toDictionary());
+
+    // See PHI385. Dashboard panel mutations rely on changes to the Dashboard
+    // object persisting when transactions are applied, but this assumption is
+    // no longer valid after T13054. For now, just save the dashboard
+    // explicitly.
+    $this->save();
+
     return $this;
   }
 
@@ -122,19 +130,8 @@ final class PhabricatorDashboard extends PhabricatorDashboardDAO
     return new PhabricatorDashboardTransactionEditor();
   }
 
-  public function getApplicationTransactionObject() {
-    return $this;
-  }
-
   public function getApplicationTransactionTemplate() {
     return new PhabricatorDashboardTransaction();
-  }
-
-  public function willRenderTimeline(
-    PhabricatorApplicationTransactionView $timeline,
-    AphrontRequest $request) {
-
-    return $timeline;
   }
 
 

@@ -45,18 +45,23 @@ final class LegalpadDocumentEditor
     }
 
     if ($is_contribution) {
+      $text = $object->getDocumentBody()->getText();
+      $title = $object->getDocumentBody()->getTitle();
       $object->setVersions($object->getVersions() + 1);
-      $body = $object->getDocumentBody();
+
+      $body = new LegalpadDocumentBody();
+      $body->setCreatorPHID($this->getActingAsPHID());
+      $body->setText($text);
+      $body->setTitle($title);
       $body->setVersion($object->getVersions());
       $body->setDocumentPHID($object->getPHID());
       $body->save();
 
       $object->setDocumentBodyPHID($body->getPHID());
 
-      $actor = $this->getActor();
       $type = PhabricatorContributedToObjectEdgeType::EDGECONST;
       id(new PhabricatorEdgeEditor())
-        ->addEdge($actor->getPHID(), $type, $object->getPHID())
+        ->addEdge($this->getActingAsPHID(), $type, $object->getPHID())
         ->save();
 
       $type = PhabricatorObjectHasContributorEdgeType::EDGECONST;
@@ -119,12 +124,10 @@ final class LegalpadDocumentEditor
 
   protected function buildMailTemplate(PhabricatorLiskDAO $object) {
     $id = $object->getID();
-    $phid = $object->getPHID();
     $title = $object->getDocumentBody()->getTitle();
 
     return id(new PhabricatorMetaMTAMail())
-      ->setSubject("L{$id}: {$title}")
-      ->addHeader('Thread-Topic', "L{$id}: {$phid}");
+      ->setSubject("L{$id}: {$title}");
   }
 
   protected function getMailTo(PhabricatorLiskDAO $object) {
@@ -163,7 +166,7 @@ final class LegalpadDocumentEditor
   }
 
   protected function getMailSubjectPrefix() {
-    return PhabricatorEnv::getEnvConfig('metamta.legalpad.subject-prefix');
+    return pht('[Legalpad]');
   }
 
 

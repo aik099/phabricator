@@ -221,6 +221,10 @@ final class PhabricatorEnv extends Phobject {
 
     foreach ($site_sources as $site_source) {
       $stack->pushSource($site_source);
+
+      // If the site source did anything which reads config, throw it away
+      // to make sure any additional site sources get clean reads.
+      self::dropConfigCache();
     }
 
     $masters = PhabricatorDatabaseRef::getMasterDatabaseRefs();
@@ -259,6 +263,10 @@ final class PhabricatorEnv extends Phobject {
         throw $ex;
       }
     }
+
+    // Drop the config cache one final time to make sure we're getting clean
+    // reads now that we've finished building the stack.
+    self::dropConfigCache();
   }
 
   public static function repairConfig($key, $value) {
@@ -475,11 +483,17 @@ final class PhabricatorEnv extends Phobject {
    * @task read
    */
   public static function getDoclink($resource, $type = 'article') {
-    $uri = new PhutilURI('https://secure.phabricator.com/diviner/find/');
-    $uri->setQueryParam('name', $resource);
-    $uri->setQueryParam('type', $type);
-    $uri->setQueryParam('jump', true);
-    return (string)$uri;
+    $params = array(
+      'name' => $resource,
+      'type' => $type,
+      'jump' => true,
+    );
+
+    $uri = new PhutilURI(
+      'https://secure.phabricator.com/diviner/find/',
+      $params);
+
+    return phutil_string_cast($uri);
   }
 
 
@@ -678,7 +692,7 @@ final class PhabricatorEnv extends Phobject {
    * Detect if a URI identifies some valid linkable remote resource.
    *
    * @param string URI to test.
-   * @return bool True if a URI idenfies a remote resource with an allowed
+   * @return bool True if a URI identifies a remote resource with an allowed
    *              protocol.
    * @task uri
    */

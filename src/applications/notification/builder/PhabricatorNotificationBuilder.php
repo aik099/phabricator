@@ -145,29 +145,25 @@ final class PhabricatorNotificationBuilder extends Phobject {
     $dict = array();
 
     $viewer = $this->user;
-    $desktop_key = PhabricatorDesktopNotificationsSetting::SETTINGKEY;
-    $desktop_enabled = $viewer->getUserSetting($desktop_key);
+    $key = PhabricatorNotificationsSetting::SETTINGKEY;
+    $setting = $viewer->getUserSetting($key);
+    $desktop_ready = PhabricatorNotificationsSetting::desktopReady($setting);
+    $web_ready = PhabricatorNotificationsSetting::webReady($setting);
 
     foreach ($stories as $story) {
       if ($story instanceof PhabricatorApplicationTransactionFeedStory) {
         $dict[] = array(
-          'desktopReady' => $desktop_enabled,
+          'showAnyNotification' => $web_ready,
+          'showDesktopNotification' => $desktop_ready,
           'title'        => $story->renderText(),
           'body'         => $story->renderTextBody(),
           'href'         => $story->getURI(),
           'icon'         => $story->getImageURI(),
         );
-      } else if ($story instanceof PhabricatorNotificationTestFeedStory) {
-        $dict[] = array(
-          'desktopReady' => $desktop_enabled,
-          'title'        => pht('Test Notification'),
-          'body'         => $story->renderText(),
-          'href'         => null,
-          'icon'         => PhabricatorUser::getDefaultProfileImageURI(),
-        );
       } else {
         $dict[] = array(
-          'desktopReady' => false,
+          'showWebNotification' => false,
+          'showDesktopNotification' => false,
           'title'        => null,
           'body'         => null,
           'href'         => null,

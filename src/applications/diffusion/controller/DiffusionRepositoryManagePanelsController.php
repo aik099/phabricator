@@ -53,6 +53,10 @@ final class DiffusionRepositoryManagePanelsController
 
     $panel = $panels[$selected];
 
+    $crumbs = $this->buildApplicationCrumbs();
+    $crumbs->addTextCrumb($panel->getManagementPanelLabel());
+    $crumbs->setBorder(true);
+
     $content = $panel->buildManagementPanelContent();
 
     $title = array(
@@ -60,31 +64,7 @@ final class DiffusionRepositoryManagePanelsController
       $repository->getDisplayName(),
     );
 
-    $crumbs = $this->buildApplicationCrumbs();
-    $crumbs->addTextCrumb($panel->getManagementPanelLabel());
-    $crumbs->setBorder(true);
-
-    $header_text = pht(
-      '%s: %s',
-      $repository->getDisplayName(),
-      $panel->getManagementPanelLabel());
-
-    $header = id(new PHUIHeaderView())
-      ->setHeader($header_text)
-      ->setHeaderIcon('fa-pencil');
-    if ($repository->isTracked()) {
-      $header->setStatus('fa-check', 'bluegrey', pht('Active'));
-    } else {
-      $header->setStatus('fa-ban', 'dark', pht('Inactive'));
-    }
-
-    $header->addActionLink(
-      id(new PHUIButtonView())
-        ->setTag('a')
-        ->setText(pht('View Repository'))
-        ->setHref($repository->getURI())
-        ->setIcon('fa-code')
-        ->setColor(PHUIButtonView::GREEN));
+    $header = $this->buildHeaderView($repository->getDisplayName());
 
     $view = id(new PHUITwoColumnView())
       ->setHeader($header)
@@ -113,31 +93,90 @@ final class DiffusionRepositoryManagePanelsController
     $nav = id(new AphrontSideNavFilterView())
       ->setBaseURI($base_uri);
 
-    $item = id(new PHUIListItemView())
-      ->setName(pht('manage'))
-      ->setType(PHUIListItemView::TYPE_LABEL);
+    $groups = DiffusionRepositoryManagementPanelGroup::getAllPanelGroups();
+    $panel_groups = mgroup($panels, 'getManagementPanelGroupKey');
+    $other_key = DiffusionRepositoryManagementOtherPanelGroup::PANELGROUPKEY;
 
-    $nav->addMenuItem($item);
+    foreach ($groups as $group_key => $group) {
+      // If this is the "Other" group, include everything else that isn't in
+      // some actual group.
+      if ($group_key === $other_key) {
+        $group_panels = array_mergev($panel_groups);
+        $panel_groups = array();
+      } else {
+        $group_panels = idx($panel_groups, $group_key);
+        unset($panel_groups[$group_key]);
+      }
 
-    foreach ($panels as $panel) {
-      $key = $panel->getManagementPanelKey();
-      $label = $panel->getManagementPanelLabel();
-      $icon = $panel->getManagementPanelIcon();
-      $href = $panel->getPanelNavigationURI();
+      if (!$group_panels) {
+        continue;
+      }
 
-      $item = id(new PHUIListItemView())
-        ->setKey($key)
-        ->setName($label)
-        ->setType(PHUIListItemView::TYPE_LINK)
-        ->setHref($href)
-        ->setIcon($icon);
+      $label = $group->getManagementPanelGroupLabel();
+      if ($label) {
+        $nav->addLabel($label);
+      }
 
-      $nav->addMenuItem($item);
+      foreach ($group_panels as $panel) {
+        $key = $panel->getManagementPanelKey();
+        $label = $panel->getManagementPanelLabel();
+        $icon = $panel->getManagementPanelIcon();
+        $href = $panel->getPanelNavigationURI();
+
+        $item = id(new PHUIListItemView())
+          ->setKey($key)
+          ->setName($label)
+          ->setType(PHUIListItemView::TYPE_LINK)
+          ->setHref($href)
+          ->setIcon($icon);
+
+        $nav->addMenuItem($item);
+      }
     }
 
     $nav->selectFilter($selected);
 
     return $nav;
+  }
+
+  public function buildHeaderView($title) {
+    $viewer = $this->getViewer();
+
+    $drequest = $this->getDiffusionRequest();
+    $repository = $drequest->getRepository();
+
+    $header = id(new PHUIHeaderView())
+      ->setHeader($title)
+      ->setProfileHeader(true)
+      ->setHref($repository->getURI())
+      ->setImage($repository->getProfileImageURI());
+
+    if ($repository->isTracked()) {
+      $header->setStatus('fa-check', 'bluegrey', pht('Active'));
+    } else {
+      $header->setStatus('fa-ban', 'dark', pht('Inactive'));
+    }
+
+    $doc_href = PhabricatorEnv::getDoclink(
+      'Diffusion User Guide: Managing Repositories');
+
+    $header->addActionLink(
+      id(new PHUIButtonView())
+        ->setTag('a')
+        ->setText(pht('View Repository'))
+        ->setHref($repository->getURI())
+        ->setIcon('fa-code')
+        ->setColor(PHUIButtonView::GREY));
+
+    $header->addActionLink(
+      id(new PHUIButtonView())
+        ->setTag('a')
+        ->setIcon('fa-book')
+        ->setHref($doc_href)
+        ->setText(pht('Help'))
+        ->setColor(PHUIButtonView::GREY));
+
+    return $header;
   }
 
   public function newTimeline(PhabricatorRepository $repository) {

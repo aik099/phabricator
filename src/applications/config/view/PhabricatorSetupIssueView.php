@@ -129,7 +129,7 @@ final class PhabricatorSetupIssueView extends AphrontView {
           array(
             'href' => '/config/unignore/'.$issue->getIssueKey().'/',
             'sigil' => 'workflow',
-            'class' => 'button grey',
+            'class' => 'button button-grey',
           ),
           pht('Unignore Setup Issue'));
       } else {
@@ -138,7 +138,7 @@ final class PhabricatorSetupIssueView extends AphrontView {
           array(
             'href' => '/config/ignore/'.$issue->getIssueKey().'/',
             'sigil' => 'workflow',
-            'class' => 'button grey',
+            'class' => 'button button-grey',
           ),
           pht('Ignore Setup Issue'));
       }
@@ -147,8 +147,7 @@ final class PhabricatorSetupIssueView extends AphrontView {
         'a',
         array(
           'href' => '/config/issue/'.$issue->getIssueKey().'/',
-          'class' => 'button grey',
-          'style' => 'float: right',
+          'class' => 'button button-grey',
         ),
         pht('Reload Page'));
     }
@@ -194,14 +193,24 @@ final class PhabricatorSetupIssueView extends AphrontView {
       array(
         'class' => 'setup-issue-head',
       ),
-      array($name, $status));
+      $name);
+
+    $body = phutil_tag(
+      'div',
+      array(
+        'class' => 'setup-issue-body',
+      ),
+      array(
+        $status,
+        $description,
+      ));
 
     $tail = phutil_tag(
       'div',
       array(
         'class' => 'setup-issue-tail',
       ),
-      array($actions));
+      $actions);
 
     $issue = phutil_tag(
       'div',
@@ -210,7 +219,7 @@ final class PhabricatorSetupIssueView extends AphrontView {
       ),
       array(
         $head,
-        $description,
+        $body,
         $tail,
       ));
 
@@ -436,7 +445,7 @@ final class PhabricatorSetupIssueView extends AphrontView {
         'p',
         array(),
         pht(
-          'You can find more information about configuring OPCache in '.
+          'You can find more information about configuring OPcache in '.
           'the %s.',
           phutil_tag(
             'a',
@@ -444,7 +453,7 @@ final class PhabricatorSetupIssueView extends AphrontView {
               'href' => 'http://php.net/manual/opcache.configuration.php',
               'target' => '_blank',
             ),
-            pht('PHP OPCache Documentation'))));
+            pht('PHP OPcache Documentation'))));
     }
 
     $info[] = phutil_tag(

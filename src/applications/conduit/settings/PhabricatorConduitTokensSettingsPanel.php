@@ -19,6 +19,10 @@ final class PhabricatorConduitTokensSettingsPanel
     return pht('Conduit API Tokens');
   }
 
+  public function getPanelMenuIcon() {
+    return id(new PhabricatorConduitApplication())->getIcon();
+  }
+
   public function getPanelGroupKey() {
     return PhabricatorSettingsLogsPanelGroup::PANELGROUPKEY;
   }
@@ -60,7 +64,7 @@ final class PhabricatorConduitTokensSettingsPanel
         javelin_tag(
           'a',
           array(
-            'class' => 'button small grey',
+            'class' => 'button small button-grey',
             'href' => '/conduit/token/terminate/'.$token->getID().'/',
             'sigil' => 'workflow',
           ),
@@ -88,18 +92,19 @@ final class PhabricatorConduitTokensSettingsPanel
       ));
 
     $generate_button = id(new PHUIButtonView())
-      ->setText(pht('Generate API Token'))
+      ->setText(pht('Generate Token'))
       ->setHref('/conduit/token/edit/?objectPHID='.$user->getPHID())
       ->setTag('a')
       ->setWorkflow(true)
       ->setIcon('fa-plus');
 
     $terminate_button = id(new PHUIButtonView())
-      ->setText(pht('Terminate All Tokens'))
+      ->setText(pht('Terminate Tokens'))
       ->setHref('/conduit/token/terminate/?objectPHID='.$user->getPHID())
       ->setTag('a')
       ->setWorkflow(true)
-      ->setIcon('fa-exclamation-triangle');
+      ->setIcon('fa-exclamation-triangle')
+      ->setColor(PHUIButtonView::RED);
 
     $header = id(new PHUIHeaderView())
       ->setHeader(pht('Active API Tokens'))
@@ -108,7 +113,8 @@ final class PhabricatorConduitTokensSettingsPanel
 
     $panel = id(new PHUIObjectBoxView())
       ->setHeader($header)
-      ->setTable($table);
+      ->setBackground(PHUIObjectBoxView::WHITE_CONFIG)
+      ->appendChild($table);
 
     return $panel;
   }

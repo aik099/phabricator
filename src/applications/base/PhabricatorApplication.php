@@ -104,7 +104,7 @@ abstract class PhabricatorApplication
    *
    * Launchable applications can be pinned to the home page, and show up in the
    * "Launcher" view of the Applications application. Making an application
-   * unlauncahble prevents pinning and hides it from this view.
+   * unlaunchable prevents pinning and hides it from this view.
    *
    * Usually, an application should be marked unlaunchable if:
    *
@@ -545,7 +545,7 @@ abstract class PhabricatorApplication
       case PhabricatorPolicyCapability::CAN_VIEW:
         return $this->canUninstall();
       case PhabricatorPolicyCapability::CAN_EDIT:
-        return false;
+        return true;
       default:
         $spec = $this->getCustomCapabilitySpecification($capability);
         return idx($spec, 'edit', true);
@@ -614,8 +614,12 @@ abstract class PhabricatorApplication
       ')?';
   }
 
-  protected function getQueryRoutePattern($base = null) {
+  protected function getBulkRoutePattern($base = null) {
     return $base.'(?:query/(?P<queryKey>[^/]+)/)?';
+  }
+
+  protected function getQueryRoutePattern($base = null) {
+    return $base.'(?:query/(?P<queryKey>[^/]+)/(?:(?P<queryAction>[^/]+)/)?)?';
   }
 
   protected function getProfileMenuRouting($controller) {
@@ -645,18 +649,8 @@ abstract class PhabricatorApplication
     return new PhabricatorApplicationEditor();
   }
 
-  public function getApplicationTransactionObject() {
-    return $this;
-  }
-
   public function getApplicationTransactionTemplate() {
     return new PhabricatorApplicationApplicationTransaction();
   }
 
-  public function willRenderTimeline(
-    PhabricatorApplicationTransactionView $timeline,
-    AphrontRequest $request) {
-
-    return $timeline;
-  }
 }

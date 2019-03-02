@@ -191,7 +191,7 @@ final class HeraldRuleController extends HeraldController {
             'a',
             array(
               'href' => '#',
-              'class' => 'button green',
+              'class' => 'button button-green',
               'sigil' => 'create-condition',
               'mustcapture' => true,
             ),
@@ -212,13 +212,13 @@ final class HeraldRuleController extends HeraldController {
             'a',
             array(
               'href' => '#',
-              'class' => 'button green',
+              'class' => 'button button-green',
               'sigil' => 'create-action',
               'mustcapture' => true,
             ),
             pht('New Action')))
           ->setDescription(pht(
-            'Take these actions %s this rule matches:',
+            'Take these actions %s',
             $repetition_selector))
           ->setContent(javelin_tag(
               'table',
@@ -238,9 +238,9 @@ final class HeraldRuleController extends HeraldController {
         ? pht('Edit Herald Rule: %s', $rule->getName())
         : pht('Create Herald Rule: %s', idx($content_type_map, $content_type));
 
-    $icon = $rule->getID() ? 'fa-pencil' : 'fa-plus-square';
-
     $form_box = id(new PHUIObjectBoxView())
+      ->setHeaderText($title)
+      ->setBackground(PHUIObjectBoxView::WHITE_CONFIG)
       ->setFormErrors($errors)
       ->setForm($form);
 
@@ -249,12 +249,7 @@ final class HeraldRuleController extends HeraldController {
       ->addTextCrumb($title)
       ->setBorder(true);
 
-    $header = id(new PHUIHeaderView())
-      ->setHeader($title)
-      ->setHeaderIcon('fa-plus-square');
-
     $view = id(new PHUITwoColumnView())
-      ->setHeader($header)
       ->setFooter($form_box);
 
     return $this->newPage()
@@ -270,7 +265,15 @@ final class HeraldRuleController extends HeraldController {
     $new_name = $request->getStr('name');
     $match_all = ($request->getStr('must_match') == 'all');
 
-    $repetition_policy_param = $request->getStr('repetition_policy');
+    $repetition_policy = $request->getStr('repetition_policy');
+
+    // If the user selected an invalid policy, or there's only one possible
+    // value so we didn't render a control, adjust the value to the first
+    // valid policy value.
+    $repetition_options = $this->getRepetitionOptionMap($adapter);
+    if (!isset($repetition_options[$repetition_policy])) {
+      $repetition_policy = head_key($repetition_options);
+    }
 
     $e_name = true;
     $errors = array();
@@ -353,7 +356,7 @@ final class HeraldRuleController extends HeraldController {
         $match_all,
         $conditions,
         $actions,
-        $repetition_policy_param);
+        $repetition_policy);
 
       $xactions = array();
       $xactions[] = id(new HeraldRuleTransaction())
@@ -378,8 +381,7 @@ final class HeraldRuleController extends HeraldController {
     // mutate current rule, so it would be sent to the client in the right state
     $rule->setMustMatchAll((int)$match_all);
     $rule->setName($new_name);
-    $rule->setRepetitionPolicy(
-      HeraldRepetitionPolicyConfig::toInt($repetition_policy_param));
+    $rule->setRepetitionPolicyStringConstant($repetition_policy);
     $rule->attachConditions($conditions);
     $rule->attachActions($actions);
 
@@ -599,15 +601,10 @@ final class HeraldRuleController extends HeraldController {
    * time) this rule matches..." element.
    */
   private function renderRepetitionSelector($rule, HeraldAdapter $adapter) {
-    $repetition_policy = HeraldRepetitionPolicyConfig::toString(
-      $rule->getRepetitionPolicy());
-
-    $repetition_options = $adapter->getRepetitionOptions();
-    $repetition_names = HeraldRepetitionPolicyConfig::getMap();
-    $repetition_map = array_select_keys($repetition_names, $repetition_options);
-
+    $repetition_policy = $rule->getRepetitionPolicyStringConstant();
+    $repetition_map = $this->getRepetitionOptionMap($adapter);
     if (count($repetition_map) < 2) {
-      return head($repetition_names);
+      return head($repetition_map);
     } else {
       return AphrontFormSelectControl::renderSelectTag(
         $repetition_policy,
@@ -618,6 +615,11 @@ final class HeraldRuleController extends HeraldController {
     }
   }
 
+  private function getRepetitionOptionMap(HeraldAdapter $adapter) {
+    $repetition_options = $adapter->getRepetitionOptions();
+    $repetition_names = HeraldRule::getRepetitionPolicySelectOptionMap();
+    return array_select_keys($repetition_names, $repetition_options);
+  }
 
   protected function buildTokenizerTemplates() {
     $template = new AphrontTokenizerTemplateView();

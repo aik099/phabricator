@@ -160,7 +160,7 @@ final class PhabricatorCustomFieldList extends Phobject {
       if ($value !== null) {
         switch ($field->getStyleForPropertyView()) {
           case 'header':
-            // We want to hide headers if the fields the're assciated with
+            // We want to hide headers if the fields they're associated with
             // don't actually produce any visible properties. For example, in a
             // list like this:
             //
@@ -303,7 +303,7 @@ final class PhabricatorCustomFieldList extends Phobject {
         foreach (PhabricatorLiskDAO::chunkSQL($sql_list) as $chunk) {
           queryfx(
             $conn_w,
-            'INSERT INTO %T (objectPHID, indexKey, indexValue) VALUES %Q',
+            'INSERT INTO %T (objectPHID, indexKey, indexValue) VALUES %LQ',
             $table,
             $chunk);
         }

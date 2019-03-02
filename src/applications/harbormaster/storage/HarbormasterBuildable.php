@@ -1,10 +1,13 @@
 <?php
 
-final class HarbormasterBuildable extends HarbormasterDAO
+final class HarbormasterBuildable
+  extends HarbormasterDAO
   implements
     PhabricatorApplicationTransactionInterface,
     PhabricatorPolicyInterface,
-    HarbormasterBuildableInterface {
+    HarbormasterBuildableInterface,
+    PhabricatorConduitResultInterface,
+    PhabricatorDestructibleInterface {
 
   protected $buildablePHID;
   protected $containerPHID;
@@ -15,53 +18,10 @@ final class HarbormasterBuildable extends HarbormasterDAO
   private $containerObject = self::ATTACHABLE;
   private $builds = self::ATTACHABLE;
 
-  const STATUS_BUILDING = 'building';
-  const STATUS_PASSED = 'passed';
-  const STATUS_FAILED = 'failed';
-
-  public static function getBuildableStatusName($status) {
-    $map = self::getBuildStatusMap();
-    return idx($map, $status, pht('Unknown ("%s")', $status));
-  }
-
-  public static function getBuildStatusMap() {
-    return array(
-      self::STATUS_BUILDING => pht('Building'),
-      self::STATUS_PASSED => pht('Passed'),
-      self::STATUS_FAILED => pht('Failed'),
-    );
-  }
-
-  public static function getBuildableStatusIcon($status) {
-    switch ($status) {
-      case self::STATUS_BUILDING:
-        return PHUIStatusItemView::ICON_RIGHT;
-      case self::STATUS_PASSED:
-        return PHUIStatusItemView::ICON_ACCEPT;
-      case self::STATUS_FAILED:
-        return PHUIStatusItemView::ICON_REJECT;
-      default:
-        return PHUIStatusItemView::ICON_QUESTION;
-    }
-  }
-
-  public static function getBuildableStatusColor($status) {
-    switch ($status) {
-      case self::STATUS_BUILDING:
-        return 'blue';
-      case self::STATUS_PASSED:
-        return 'green';
-      case self::STATUS_FAILED:
-        return 'red';
-      default:
-        return 'bluegrey';
-    }
-  }
-
   public static function initializeNewBuildable(PhabricatorUser $actor) {
     return id(new HarbormasterBuildable())
       ->setIsManualBuildable(0)
-      ->setBuildableStatus(self::STATUS_BUILDING);
+      ->setBuildableStatus(HarbormasterBuildableStatus::STATUS_PREPARING);
   }
 
   public function getMonogram() {
@@ -182,6 +142,15 @@ final class HarbormasterBuildable extends HarbormasterDAO
 
     $build->save();
 
+    $steps = id(new HarbormasterBuildStepQuery())
+      ->setViewer($viewer)
+      ->withBuildPlanPHIDs(array($plan->getPHID()))
+      ->execute();
+
+    foreach ($steps as $step) {
+      $step->willStartBuild($viewer, $this, $build, $plan);
+    }
+
     PhabricatorWorker::scheduleTask(
       'HarbormasterBuildWorker',
       array(
@@ -250,6 +219,63 @@ final class HarbormasterBuildable extends HarbormasterDAO
   }
 
 
+/* -(  Status  )------------------------------------------------------------- */
+
+
+  public function getBuildableStatusObject() {
+    $status = $this->getBuildableStatus();
+    return HarbormasterBuildableStatus::newBuildableStatusObject($status);
+  }
+
+  public function getStatusIcon() {
+    return $this->getBuildableStatusObject()->getIcon();
+  }
+
+  public function getStatusDisplayName() {
+    return $this->getBuildableStatusObject()->getDisplayName();
+  }
+
+  public function getStatusColor() {
+    return $this->getBuildableStatusObject()->getColor();
+  }
+
+  public function isPreparing() {
+    return $this->getBuildableStatusObject()->isPreparing();
+  }
+
+  public function isBuilding() {
+    return $this->getBuildableStatusObject()->isBuilding();
+  }
+
+
+/* -(  Messages  )----------------------------------------------------------- */
+
+
+  public function sendMessage(
+    PhabricatorUser $viewer,
+    $message_type,
+    $queue_update) {
+
+    $message = HarbormasterBuildMessage::initializeNewMessage($viewer)
+      ->setReceiverPHID($this->getPHID())
+      ->setType($message_type)
+      ->save();
+
+    if ($queue_update) {
+      PhabricatorWorker::scheduleTask(
+        'HarbormasterBuildWorker',
+        array(
+          'buildablePHID' => $this->getPHID(),
+        ),
+        array(
+          'objectPHID' => $this->getPHID(),
+        ));
+    }
+
+    return $message;
+  }
+
+
 /* -(  PhabricatorApplicationTransactionInterface  )------------------------- */
 
 
@@ -257,19 +283,8 @@ final class HarbormasterBuildable extends HarbormasterDAO
     return new HarbormasterBuildableTransactionEditor();
   }
 
-  public function getApplicationTransactionObject() {
-    return $this;
-  }
-
   public function getApplicationTransactionTemplate() {
     return new HarbormasterBuildableTransaction();
-  }
-
-  public function willRenderTimeline(
-    PhabricatorApplicationTransactionView $timeline,
-    AphrontRequest $request) {
-
-    return $timeline;
   }
 
 
@@ -317,10 +332,6 @@ final class HarbormasterBuildable extends HarbormasterDAO
     return $this->getContainerPHID();
   }
 
-  public function getHarbormasterPublishablePHID() {
-    return $this->getBuildableObject()->getHarbormasterPublishablePHID();
-  }
-
   public function getBuildVariables() {
     return array();
   }
@@ -329,5 +340,77 @@ final class HarbormasterBuildable extends HarbormasterDAO
     return array();
   }
 
+  public function newBuildableEngine() {
+    return $this->getBuildableObject()->newBuildableEngine();
+  }
+
+
+/* -(  PhabricatorConduitResultInterface  )---------------------------------- */
+
+
+  public function getFieldSpecificationsForConduit() {
+    return array(
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('objectPHID')
+        ->setType('phid')
+        ->setDescription(pht('PHID of the object that is built.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('containerPHID')
+        ->setType('phid')
+        ->setDescription(pht('PHID of the object containing this buildable.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('buildableStatus')
+        ->setType('map<string, wild>')
+        ->setDescription(pht('The current status of this buildable.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('isManual')
+        ->setType('bool')
+        ->setDescription(pht('True if this is a manual buildable.')),
+    );
+  }
+
+  public function getFieldValuesForConduit() {
+    return array(
+      'objectPHID' => $this->getBuildablePHID(),
+      'containerPHID' => $this->getContainerPHID(),
+      'buildableStatus' => array(
+        'value' => $this->getBuildableStatus(),
+      ),
+      'isManual' => (bool)$this->getIsManualBuildable(),
+    );
+  }
+
+  public function getConduitSearchAttachments() {
+    return array();
+  }
+
+
+/* -(  PhabricatorDestructibleInterface  )----------------------------------- */
+
+
+  public function destroyObjectPermanently(
+    PhabricatorDestructionEngine $engine) {
+    $viewer = $engine->getViewer();
+
+    $this->openTransaction();
+      $builds = id(new HarbormasterBuildQuery())
+        ->setViewer($viewer)
+        ->withBuildablePHIDs(array($this->getPHID()))
+        ->execute();
+      foreach ($builds as $build) {
+        $engine->destroyObject($build);
+      }
+
+      $messages = id(new HarbormasterBuildMessageQuery())
+        ->setViewer($viewer)
+        ->withReceiverPHIDs(array($this->getPHID()))
+        ->execute();
+      foreach ($messages as $message) {
+        $engine->destroyObject($message);
+      }
+
+      $this->delete();
+    $this->saveTransaction();
+  }
 
 }

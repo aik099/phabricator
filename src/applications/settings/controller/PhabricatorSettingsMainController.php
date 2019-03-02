@@ -112,18 +112,28 @@ final class PhabricatorSettingsMainController
 
     $crumbs = $this->buildApplicationCrumbs();
     $crumbs->addTextCrumb($panel->getPanelName());
+    $crumbs->setBorder(true);
+
+    if ($this->user) {
+      $header_text = pht('Edit Settings: %s', $user->getUserName());
+    } else {
+      $header_text = pht('Edit Global Settings');
+    }
+
+    $header = id(new PHUIHeaderView())
+      ->setHeader($header_text);
 
     $title = $panel->getPanelName();
 
     $view = id(new PHUITwoColumnView())
-      ->setNavigation($nav)
-      ->setMainColumn($response);
+      ->setHeader($header)
+      ->setFooter($response);
 
     return $this->newPage()
       ->setTitle($title)
       ->setCrumbs($crumbs)
+      ->setNavigation($nav)
       ->appendChild($view);
-
   }
 
   private function buildPanels(PhabricatorUserPreferences $preferences) {
@@ -193,10 +203,17 @@ final class PhabricatorSettingsMainController
       if ($panel->getPanelGroupKey() != $group_key) {
         $group_key = $panel->getPanelGroupKey();
         $group = $panel->getPanelGroup();
-        $nav->addLabel($group->getPanelGroupName());
+        $panel_name = $group->getPanelGroupName();
+        if ($panel_name) {
+          $nav->addLabel($panel_name);
+        }
       }
 
-      $nav->addFilter($panel->getPanelKey(), $panel->getPanelName());
+      $nav->addFilter(
+        $panel->getPanelKey(),
+        $panel->getPanelName(),
+        null,
+        $panel->getPanelMenuIcon());
     }
 
     return $nav;

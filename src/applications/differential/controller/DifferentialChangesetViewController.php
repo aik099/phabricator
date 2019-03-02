@@ -276,6 +276,7 @@ final class DifferentialChangesetViewController extends DifferentialController {
       ->setDiff($diff)
       ->setTitle(pht('Standalone View'))
       ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
+      ->setIsStandalone(true)
       ->setParser($parser);
 
     if ($revision_id) {
@@ -390,10 +391,20 @@ final class DifferentialChangesetViewController extends DifferentialController {
       return array();
     }
 
+    $change_type = $changeset->getChangeType();
+    if (DifferentialChangeType::isDeleteChangeType($change_type)) {
+      // If this is a lint message on a deleted file, show it on the left
+      // side of the UI because there are no source code lines on the right
+      // side of the UI so inlines don't have anywhere to render. See PHI416.
+      $is_new = 0;
+    } else {
+      $is_new = 1;
+    }
+
     $template = id(new DifferentialInlineComment())
-        ->setChangesetID($changeset->getID())
-        ->setIsNewFile(1)
-        ->setLineLength(0);
+      ->setChangesetID($changeset->getID())
+      ->setIsNewFile($is_new)
+      ->setLineLength(0);
 
     $inlines = array();
     foreach ($messages as $message) {
@@ -409,15 +420,17 @@ final class DifferentialChangesetViewController extends DifferentialController {
   }
 
   private function loadCoverage(DifferentialChangeset $changeset) {
+    $viewer = $this->getViewer();
+
     $target_phids = $changeset->getDiff()->getBuildTargetPHIDs();
     if (!$target_phids) {
       return null;
     }
 
-    $unit = id(new HarbormasterBuildUnitMessage())->loadAllWhere(
-      'buildTargetPHID IN (%Ls)',
-      $target_phids);
-
+    $unit = id(new HarbormasterBuildUnitMessageQuery())
+      ->setViewer($viewer)
+      ->withBuildTargetPHIDs($target_phids)
+      ->execute();
     if (!$unit) {
       return null;
     }

@@ -24,6 +24,7 @@ final class PhabricatorProjectQuery
   private $maxDepth;
   private $minMilestoneNumber;
   private $maxMilestoneNumber;
+  private $subtypes;
 
   private $status       = 'status-any';
   const STATUS_ANY      = 'status-any';
@@ -131,6 +132,11 @@ final class PhabricatorProjectQuery
     return $this;
   }
 
+  public function withSubtypes(array $subtypes) {
+    $this->subtypes = $subtypes;
+    return $this;
+  }
+
   public function needMembers($need_members) {
     $this->needMembers = $need_members;
     return $this;
@@ -187,6 +193,11 @@ final class PhabricatorProjectQuery
         'column' => 'milestoneNumber',
         'type' => 'int',
       ),
+      'status' => array(
+        'table' => $this->getPrimaryTableAlias(),
+        'column' => 'status',
+        'type' => 'int',
+      ),
     );
   }
 
@@ -195,6 +206,7 @@ final class PhabricatorProjectQuery
     return array(
       'id' => $project->getID(),
       'name' => $project->getName(),
+      'status' => $project->getStatus(),
     );
   }
 
@@ -357,33 +369,69 @@ final class PhabricatorProjectQuery
   }
 
   protected function didFilterPage(array $projects) {
-    if ($this->needImages) {
-      $default = null;
+    $viewer = $this->getViewer();
 
-      $file_phids = mpull($projects, 'getProfileImagePHID');
-      $file_phids = array_filter($file_phids);
+    if ($this->needImages) {
+      $need_images = $projects;
+
+      // First, try to load custom profile images for any projects with custom
+      // images.
+      $file_phids = array();
+      foreach ($need_images as $key => $project) {
+        $image_phid = $project->getProfileImagePHID();
+        if ($image_phid) {
+          $file_phids[$key] = $image_phid;
+        }
+      }
+
       if ($file_phids) {
         $files = id(new PhabricatorFileQuery())
           ->setParentQuery($this)
-          ->setViewer($this->getViewer())
+          ->setViewer($viewer)
           ->withPHIDs($file_phids)
           ->execute();
         $files = mpull($files, null, 'getPHID');
-      } else {
-        $files = array();
+
+        foreach ($file_phids as $key => $image_phid) {
+          $file = idx($files, $image_phid);
+          if (!$file) {
+            continue;
+          }
+
+          $need_images[$key]->attachProfileImageFile($file);
+          unset($need_images[$key]);
+        }
       }
 
-      foreach ($projects as $project) {
-        $file = idx($files, $project->getProfileImagePHID());
-        if (!$file) {
-          if (!$default) {
-            $default = PhabricatorFile::loadBuiltin(
-              $this->getViewer(),
-              'project.png');
-          }
-          $file = $default;
+      // For projects with default images, or projects where the custom image
+      // failed to load, load a builtin image.
+      if ($need_images) {
+        $builtin_map = array();
+        $builtins = array();
+        foreach ($need_images as $key => $project) {
+          $icon = $project->getIcon();
+
+          $builtin_name = PhabricatorProjectIconSet::getIconImage($icon);
+          $builtin_name = 'projects/'.$builtin_name;
+
+          $builtin = id(new PhabricatorFilesOnDiskBuiltinFile())
+            ->setName($builtin_name);
+
+          $builtin_key = $builtin->getBuiltinFileKey();
+
+          $builtins[] = $builtin;
+          $builtin_map[$key] = $builtin_key;
         }
-        $project->attachProfileImageFile($file);
+
+        $builtin_files = PhabricatorFile::loadBuiltins(
+          $viewer,
+          $builtins);
+
+        foreach ($need_images as $key => $project) {
+          $builtin_key = $builtin_map[$key];
+          $builtin_file = $builtin_files[$builtin_key];
+          $project->attachProfileImageFile($builtin_file);
+        }
       }
     }
 
@@ -478,7 +526,7 @@ final class PhabricatorProjectQuery
           'name LIKE %>',
           $name_prefix);
       }
-      $where[] = '('.implode(' OR ', $parts).')';
+      $where[] = qsprintf($conn, '%LO', $parts);
     }
 
     if ($this->icons !== null) {
@@ -521,7 +569,7 @@ final class PhabricatorProjectQuery
           $ancestor_path['projectDepth']);
       }
 
-      $where[] = '('.implode(' OR ', $sql).')';
+      $where[] = qsprintf($conn, '%LO', $sql);
 
       $where[] = qsprintf(
         $conn,
@@ -576,6 +624,13 @@ final class PhabricatorProjectQuery
         $this->maxMilestoneNumber);
     }
 
+    if ($this->subtypes !== null) {
+      $where[] = qsprintf(
+        $conn,
+        'subtype IN (%Ls)',
+        $this->subtypes);
+    }
+
     return $where;
   }
 
@@ -613,7 +668,8 @@ final class PhabricatorProjectQuery
     }
 
     if ($this->nameTokens !== null) {
-      foreach ($this->nameTokens as $key => $token) {
+      $name_tokens = $this->getNameTokensForQuery($this->nameTokens);
+      foreach ($name_tokens as $key => $token) {
         $token_table = 'token_'.$key;
         $joins[] = qsprintf(
           $conn,
@@ -799,6 +855,24 @@ final class PhabricatorProjectQuery
         $project->attachSlugs($project_slugs);
       }
     }
+  }
+
+  private function getNameTokensForQuery(array $tokens) {
+    // When querying for projects by name, only actually search for the five
+    // longest tokens. MySQL can get grumpy with a large number of JOINs
+    // with LIKEs and queries for more than 5 tokens are essentially never
+    // legitimate searches for projects, but users copy/pasting nonsense.
+    // See also PHI47.
+
+    $length_map = array();
+    foreach ($tokens as $token) {
+      $length_map[$token] = strlen($token);
+    }
+    arsort($length_map);
+
+    $length_map = array_slice($length_map, 0, 5, true);
+
+    return array_keys($length_map);
   }
 
 }

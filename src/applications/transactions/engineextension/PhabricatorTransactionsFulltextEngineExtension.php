@@ -9,11 +9,11 @@ final class PhabricatorTransactionsFulltextEngineExtension
     return pht('Comments');
   }
 
-  public function shouldIndexFulltextObject($object) {
+  public function shouldEnrichFulltextObject($object) {
     return ($object instanceof PhabricatorApplicationTransactionInterface);
   }
 
-  public function indexFulltextObject(
+  public function enrichFulltextObject(
     $object,
     PhabricatorSearchAbstractDocument $document) {
 
@@ -22,11 +22,28 @@ final class PhabricatorTransactionsFulltextEngineExtension
       return;
     }
 
-    $xactions = $query
+    $query
       ->setViewer($this->getViewer())
       ->withObjectPHIDs(array($object->getPHID()))
-      ->needComments(true)
-      ->execute();
+      ->withComments(true)
+      ->needComments(true);
+
+    // See PHI719. Users occasionally create objects with huge numbers of
+    // comments, which can be slow to index. We handle this with reasonable
+    // grace: at time of writing, we can index a task with 100K comments in
+    // about 30 seconds. However, we do need to hold all the comments in
+    // memory in the AbstractDocument, so there's some practical limit to what
+    // we can realistically index.
+
+    // Since objects with more than 1,000 comments are not likely to be
+    // legitimate objects with actual discussion, index only the first
+    // thousand comments.
+
+    $query
+      ->setOrderVector(array('-id'))
+      ->setLimit(1000);
+
+    $xactions = $query->execute();
 
     foreach ($xactions as $xaction) {
       if (!$xaction->hasComment()) {

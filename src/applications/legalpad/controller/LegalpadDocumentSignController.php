@@ -149,17 +149,8 @@ final class LegalpadDocumentSignController extends LegalpadController {
     }
 
     $errors = array();
+    $hisec_token = null;
     if ($request->isFormOrHisecPost() && !$has_signed) {
-
-      // Require two-factor auth to sign legal documents.
-      if ($viewer->isLoggedIn()) {
-        $engine = new PhabricatorAuthSessionEngine();
-        $engine->requireHighSecuritySession(
-          $viewer,
-          $request,
-          '/'.$document->getMonogram());
-      }
-
       list($form_data, $errors, $field_errors) = $this->readSignatureForm(
         $document,
         $request);
@@ -186,6 +177,20 @@ final class LegalpadDocumentSignController extends LegalpadController {
       $signature->setVerified($verified);
 
       if (!$errors) {
+        // Require MFA to sign legal documents.
+        if ($viewer->isLoggedIn()) {
+          $workflow_key = sprintf(
+            'legalpad.sign(%s)',
+            $document->getPHID());
+
+          $hisec_token = id(new PhabricatorAuthSessionEngine())
+            ->setWorkflowKey($workflow_key)
+            ->requireHighSecurityToken(
+              $viewer,
+              $request,
+              $document->getURI());
+        }
+
         $signature->save();
 
         // If the viewer is logged in, signing for themselves, send them to
@@ -236,7 +241,7 @@ final class LegalpadDocumentSignController extends LegalpadController {
 
     // Use the last content update as the modified date. We don't want to
     // show that a document like a TOS was "updated" by an incidental change
-    // to a field like the preamble or privacy settings which does not acutally
+    // to a field like the preamble or privacy settings which does not actually
     // affect the content of the agreement.
     $content_updated = $document_body->getDateCreated();
 
@@ -272,7 +277,7 @@ final class LegalpadDocumentSignController extends LegalpadController {
       $preamble_box->addPropertyList($preamble);
     }
 
-    $content = id(new PHUIDocumentViewPro())
+    $content = id(new PHUIDocumentView())
       ->addClass('legalpad')
       ->setHeader($header)
       ->appendChild(
@@ -359,16 +364,6 @@ final class LegalpadDocumentSignController extends LegalpadController {
             if ($email_obj) {
               return $this->signInResponse();
             }
-            $external_account = id(new PhabricatorExternalAccountQuery())
-              ->setViewer($viewer)
-              ->withAccountTypes(array('email'))
-              ->withAccountDomains(array($email->getDomainName()))
-              ->withAccountIDs(array($email->getAddress()))
-              ->loadOneOrCreate();
-            if ($external_account->getUserPHID()) {
-              return $this->signInResponse();
-            }
-            $signer_phid = $external_account->getPHID();
           }
         }
         break;

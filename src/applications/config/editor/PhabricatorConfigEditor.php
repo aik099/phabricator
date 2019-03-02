@@ -107,16 +107,19 @@ final class PhabricatorConfigEditor
     return parent::transactionHasEffect($object, $xaction);
   }
 
-  protected function didApplyTransactions(array $xactions) {
+  protected function didApplyTransactions($object, array $xactions) {
     // Force all the setup checks to run on the next page load.
     PhabricatorSetupCheck::deleteSetupCheckCache();
+
+    return $xactions;
   }
 
   public static function storeNewValue(
     PhabricatorUser $user,
     PhabricatorConfigEntry $config_entry,
     $value,
-    PhabricatorContentSource $source) {
+    PhabricatorContentSource $source,
+    $acting_as_phid = null) {
 
     $xaction = id(new PhabricatorConfigTransaction())
       ->setTransactionType(PhabricatorConfigTransaction::TYPE_EDIT)
@@ -130,6 +133,10 @@ final class PhabricatorConfigEditor
       ->setActor($user)
       ->setContinueOnNoEffect(true)
       ->setContentSource($source);
+
+    if ($acting_as_phid) {
+      $editor->setActingAsPHID($acting_as_phid);
+    }
 
     $editor->applyTransactions($config_entry, array($xaction));
   }

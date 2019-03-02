@@ -118,6 +118,13 @@ final class PhortuneCart extends PhortuneDAO
       ->setAmountAsCurrency($this->getTotalPriceAsCurrency());
 
     if ($method) {
+      if (!$method->isActive()) {
+        throw new Exception(
+          pht(
+            'Attempting to apply a charge using an inactive '.
+            'payment method ("%s")!',
+            $method->getPHID()));
+      }
       $charge->setPaymentMethodPHID($method->getPHID());
     }
 
@@ -629,19 +636,8 @@ final class PhortuneCart extends PhortuneDAO
     return new PhortuneCartEditor();
   }
 
-  public function getApplicationTransactionObject() {
-    return $this;
-  }
-
   public function getApplicationTransactionTemplate() {
     return new PhortuneCartTransaction();
-  }
-
-  public function willRenderTimeline(
-    PhabricatorApplicationTransactionView $timeline,
-    AphrontRequest $request) {
-
-    return $timeline;
   }
 
 

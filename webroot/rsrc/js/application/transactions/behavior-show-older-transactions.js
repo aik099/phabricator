@@ -17,6 +17,13 @@ JX.behavior('phabricator-show-older-transactions', function(config) {
     if (!hash) {
       return false;
     }
+
+    // If the hash isn't purely numeric, ignore it. Comments always have
+    // numeric hashes. See PHI43 and T12970.
+    if (!hash.match(/^\d+$/)) {
+      return false;
+    }
+
     var id = 'anchor-'+hash;
     try {
       JX.$(id);
@@ -76,7 +83,11 @@ JX.behavior('phabricator-show-older-transactions', function(config) {
   };
 
   var fetch_older_workflow = function(href, callback, swap) {
-    return new JX.Workflow(href, config.renderData)
+    var params = {
+      viewData: JX.JSON.stringify(config.viewData)
+    };
+
+    return new JX.Workflow(href, params)
       .setHandler(JX.bind(null, callback, swap));
   };
 

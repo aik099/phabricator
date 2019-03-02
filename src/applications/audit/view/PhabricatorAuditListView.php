@@ -170,15 +170,6 @@ final class PhabricatorAuditListView extends AphrontView {
           $commit->parseCommitMessage($commit_desc);
       }
 
-      $status = $commit->getAuditStatus();
-
-      $status_text =
-        PhabricatorAuditCommitStatusConstants::getStatusName($status);
-      $status_color =
-        PhabricatorAuditCommitStatusConstants::getStatusColor($status);
-      $status_icon =
-        PhabricatorAuditCommitStatusConstants::getStatusIcon($status);
-
       $item = id(new PHUIObjectItemView())
         ->setViewer($viewer)
         ->setObjectName($commit_name)
@@ -279,9 +270,7 @@ final class PhabricatorAuditListView extends AphrontView {
       }
       $item->addByLine(pht('Auditors: %s', $auditor_list));
 
-      if ($status_color) {
-        $item->setStatusIcon($status_icon.' '.$status_color, $status_text);
-      }
+      $commit->setStatusIcon($item);
 
       $list->addItem($item);
     }
@@ -398,7 +387,7 @@ final class PhabricatorAuditListView extends AphrontView {
       }
 
       foreach ($xaction->getNewValue() as $edge_data) {
-        $mentioned_by_phid = $edge_data['dst'];
+        $mentioned_by_phid = is_array($edge_data) ? $edge_data['dst'] : $edge_data;
 
         if (phid_get_type($mentioned_by_phid) === $type_const) {
           $inverse_mentions[$commit_phid][$mentioned_by_phid] = true;
@@ -492,7 +481,7 @@ final class PhabricatorAuditListView extends AphrontView {
     $commits = id(new DiffusionCommitQuery())
       ->setViewer($this->getViewer())
       ->withPHIDs(array_keys($this->commits))
-      ->withStatuses(array(PhabricatorAuditCommitStatusConstants::CONCERN_RAISED))
+      ->withStatuses(array(DiffusionCommitAuditStatus::CONCERN_RAISED))
       ->execute();
 
     return mpull($commits, 'getPHID');

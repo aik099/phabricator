@@ -11,6 +11,10 @@ final class PhabricatorOAuthServerAuthorizationsSettingsPanel
     return pht('OAuth Authorizations');
   }
 
+  public function getPanelMenuIcon() {
+    return 'fa-exchange';
+  }
+
   public function getPanelGroupKey() {
     return PhabricatorSettingsLogsPanelGroup::PANELGROUPKEY;
   }
@@ -87,7 +91,7 @@ final class PhabricatorOAuthServerAuthorizationsSettingsPanel
         'a',
         array(
           'href' => $this->getPanelURI('?revoke='.$authorization->getID()),
-          'class' => 'small grey button',
+          'class' => 'small button button-grey',
           'sigil' => 'workflow',
         ),
         pht('Revoke'));
@@ -134,7 +138,8 @@ final class PhabricatorOAuthServerAuthorizationsSettingsPanel
 
     $panel = id(new PHUIObjectBoxView())
       ->setHeader($header)
-      ->setTable($table);
+      ->setBackground(PHUIObjectBoxView::WHITE_CONFIG)
+      ->appendChild($table);
 
     return $panel;
   }

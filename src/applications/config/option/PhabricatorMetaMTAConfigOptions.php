@@ -66,7 +66,9 @@ of each approach are:
       received a similar message, but can not prevent all stray email arising
       from "Reply All".
     - Not supported with a private reply-to address.
-    - Mails are sent in the server default translation.
+    - Mail messages are sent in the server default translation.
+    - Mail that must be delivered over secure channels will leak the recipient
+      list in the "To" and "Cc" headers.
   - One mail to each user:
     - Policy controls work correctly and are enforced per-user.
     - Recipients need to look in the mail body to see To/Cc.
@@ -77,16 +79,8 @@ of each approach are:
     - "Reply All" will never send extra mail to other users involved in the
       thread.
     - Required if private reply-to addresses are configured.
-    - Mails are sent in the language of user preference.
+    - Mail messages are sent in the language of user preference.
 
-EODOC
-));
-
-    $herald_hints_description = $this->deformat(pht(<<<EODOC
-You can disable the Herald hints in email if users prefer smaller messages.
-These are the links under the header "WHY DID I GET THIS EMAIL?". If you set
-this to `false`, they will not appear in any mail. Users can still navigate to
-the links via the web interface.
 EODOC
 ));
 
@@ -143,15 +137,7 @@ Adapter class to use to transmit mail to the MTA. The default uses
 PHPMailerLite, which will invoke "sendmail". This is appropriate if sendmail
 actually works on your host, but if you haven't configured mail it may not be so
 great. A number of other mailers are available (e.g., SES, SendGrid, SMTP,
-custom mailers), consult "Configuring Outbound Email" in the documentation for
-details.
-EODOC
-));
-
-    $placeholder_description = $this->deformat(pht(<<<EODOC
-When sending a message that has no To recipient (i.e. all recipients are CC'd,
-for example when multiplexing mail), set the To field to the following value. If
-no value is set, messages with no To will have their CCs upgraded to To.
+custom mailers). This option is deprecated in favor of 'cluster.mailers'.
 EODOC
 ));
 
@@ -193,24 +179,41 @@ The default is `full`.
 EODOC
 ));
 
+    $mailers_description = $this->deformat(pht(<<<EODOC
+Define one or more mail transmission services. For help with configuring
+mailers, see **[[ %s | %s ]]** in the documentation.
+EODOC
+      ,
+      PhabricatorEnv::getDoclink('Configuring Outbound Email'),
+      pht('Configuring Outbound Email')));
+
+    $default_description = $this->deformat(pht(<<<EODOC
+Default address used as a "From" or "To" email address when an address is
+required but no meaningful address is available.
+
+If you configure inbound mail, you generally do not need to set this:
+Phabricator will automatically generate and use a suitable mailbox on the
+inbound mail domain.
+
+Otherwise, this option should be configured to point at a valid mailbox which
+discards all mail sent to it. If you point it at an invalid mailbox, mail sent
+by Phabricator and some mail sent by users will bounce. If you point it at a
+real user mailbox, that user will get a lot of mail they don't want.
+
+For further guidance, see **[[ %s | %s ]]** in the documentation.
+EODOC
+      ,
+      PhabricatorEnv::getDoclink('Configuring Outbound Email'),
+      pht('Configuring Outbound Email')));
+
     return array(
-      $this->newOption(
-        'metamta.default-address',
-        'string',
-        'noreply@phabricator.example.com')
-        ->setDescription(pht('Default "From" address.')),
-      $this->newOption(
-        'metamta.domain',
-        'string',
-        'phabricator.example.com')
-        ->setDescription(pht('Domain used to generate Message-IDs.')),
-      $this->newOption(
-        'metamta.mail-adapter',
-        'class',
-        'PhabricatorMailImplementationPHPMailerLiteAdapter')
-        ->setBaseClass('PhabricatorMailImplementationAdapter')
-        ->setSummary(pht('Control how mail is sent.'))
-        ->setDescription($adapter_description),
+      $this->newOption('cluster.mailers', 'cluster.mailers', array())
+        ->setHidden(true)
+        ->setDescription($mailers_description),
+      $this->newOption('metamta.default-address', 'string', null)
+        ->setLocked(true)
+        ->setSummary(pht('Default address used when generating mail.'))
+        ->setDescription($default_description),
       $this->newOption(
         'metamta.one-mail-per-recipient',
         'bool',
@@ -244,14 +247,6 @@ EODOC
         ->setLocked(true)
         ->setDescription(pht('Domain used for reply email addresses.'))
         ->addExample('phabricator.example.com', ''),
-      $this->newOption('metamta.herald.show-hints', 'bool', true)
-        ->setBoolOptions(
-          array(
-            pht('Show Herald Hints'),
-            pht('No Herald Hints'),
-          ))
-        ->setSummary(pht('Show hints about Herald rules in email.'))
-        ->setDescription($herald_hints_description),
       $this->newOption('metamta.recipients.show-hints', 'bool', true)
         ->setBoolOptions(
           array(
@@ -268,17 +263,6 @@ EODOC
           ))
         ->setSummary(pht('Show email preferences link in email.'))
         ->setDescription($email_preferences_description),
-      $this->newOption('metamta.insecure-auth-with-reply-to', 'bool', false)
-        ->setBoolOptions(
-          array(
-            pht('Allow Insecure Reply-To Auth'),
-            pht('Disallow Reply-To Auth'),
-          ))
-        ->setSummary(pht('Trust "Reply-To" headers for authentication.'))
-        ->setDescription($reply_to_description),
-      $this->newOption('metamta.placeholder-to-recipient', 'string', null)
-        ->setSummary(pht('Placeholder for mail with only CCs.'))
-        ->setDescription($placeholder_description),
       $this->newOption('metamta.public-replies', 'bool', false)
         ->setBoolOptions(
           array(
@@ -297,9 +281,9 @@ EODOC
       $this->newOption('metamta.user-address-format', 'enum', 'full')
         ->setEnumOptions(
           array(
-            'short' => 'short',
-            'real' => 'real',
-            'full' => 'full',
+            'short' => pht('Short'),
+            'real' => pht('Real'),
+            'full' => pht('Full'),
           ))
         ->setSummary(pht('Control how Phabricator renders user names in mail.'))
         ->setDescription($address_description)

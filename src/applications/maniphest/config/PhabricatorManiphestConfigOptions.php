@@ -20,47 +20,47 @@ final class PhabricatorManiphestConfigOptions
   }
 
   public function getOptions() {
-    $priority_type = 'custom:ManiphestPriorityConfigOptionType';
+    $priority_type = 'maniphest.priorities';
     $priority_defaults = array(
       100 => array(
         'name'  => pht('Unbreak Now!'),
+        'keywords' => array('unbreak'),
         'short' => pht('Unbreak!'),
         'color' => 'pink',
-        'keywords' => array('unbreak'),
       ),
       90 => array(
         'name' => pht('Needs Triage'),
+        'keywords' => array('triage'),
         'short' => pht('Triage'),
         'color' => 'violet',
-        'keywords' => array('triage'),
       ),
       80 => array(
         'name' => pht('High'),
+        'keywords' => array('high'),
         'short' => pht('High'),
         'color' => 'red',
-        'keywords' => array('high'),
       ),
       50 => array(
         'name' => pht('Normal'),
+        'keywords' => array('normal'),
         'short' => pht('Normal'),
         'color' => 'orange',
-        'keywords' => array('normal'),
       ),
       25 => array(
         'name' => pht('Low'),
+        'keywords' => array('low'),
         'short' => pht('Low'),
         'color' => 'yellow',
-        'keywords' => array('low'),
       ),
       0 => array(
         'name' => pht('Wishlist'),
+        'keywords' => array('wish', 'wishlist'),
         'short' => pht('Wish'),
         'color' => 'sky',
-        'keywords' => array('wish', 'wishlist'),
       ),
     );
 
-    $status_type = 'custom:ManiphestStatusConfigOptionType';
+    $status_type = 'maniphest.statuses';
     $status_defaults = array(
       'open' => array(
         'name' => pht('Open'),
@@ -210,8 +210,11 @@ The keys you can provide in a specification are:
   - `claim` //Optional bool.// By default, closing an unassigned task claims
     it. You can set this to `false` to disable this behavior for a particular
     status.
-  - `locked` //Optional bool.// Lock tasks in this status, preventing users
-    from commenting.
+  - `locked` //Optional string.// Lock tasks in this status. Specify "comments"
+    to lock comments (users who can edit the task may override this lock).
+    Specify "edits" to prevent anyone except the task owner from making edits.
+  - `mfa` //Optional bool.// Require all edits to this task to be signed with
+    multi-factor authentication.
 
 Statuses will appear in the UI in the order specified. Note the status marked
 `special` as `duplicate` is not settable directly and will not appear in UI
@@ -265,7 +268,7 @@ EOTEXT
     );
     $fields_json = id(new PhutilJSON())->encodeFormatted($fields_example);
 
-    $points_type = 'custom:ManiphestPointsConfigOptionType';
+    $points_type = 'maniphest.points';
 
     $points_example_1 = array(
       'enabled' => true,
@@ -299,7 +302,7 @@ See the example below for a starting point.
 EOTEXT
 ));
 
-    $subtype_type = 'custom:ManiphestSubtypesConfigOptionsType';
+    $subtype_type = 'maniphest.subtypes';
     $subtype_default_key = PhabricatorEditEngineSubtype::SUBTYPE_DEFAULT;
     $subtype_example = array(
       array(
@@ -338,6 +341,9 @@ dictionary with these keys:
   - `tag` //Optional string.// Tag text for this subtype.
   - `color` //Optional string.// Display color for this subtype.
   - `icon` //Optional string.// Icon for the subtype.
+  - `children` //Optional map.// Configure options shown to the user when
+     they "Create Subtask". See below.
+  - `fields` //Optional map.// Configure field behaviors. See below.
 
 Each subtype must have a unique key, and you must define a subtype with
 the key "%s", which is used as a default subtype.
@@ -345,9 +351,105 @@ the key "%s", which is used as a default subtype.
 The tag text (`tag`) is used to set the text shown in the subtype tag on list
 views and workboards. If you do not configure it, the default subtype will have
 no subtype tag and other subtypes will use their name as tag text.
+
+The `children` key allows you to configure which options are presented to the
+user when they "Create Subtask" from a task of this subtype. You can specify
+these keys:
+
+  - `subtypes`: //Optional list<string>.// Show users creation forms for these
+    task subtypes.
+  - `forms`: //Optional list<string|int>.// Show users these specific forms,
+    in order.
+
+If you don't specify either constraint, users will be shown creation forms
+for the same subtype.
+
+For example, if you have a "quest" subtype and do not configure `children`,
+users who click "Create Subtask" will be presented with all create forms for
+"quest" tasks.
+
+If you want to present them with forms for a different task subtype or set of
+subtypes instead, use `subtypes`:
+
+```
+  {
+    ...
+    "children": {
+      "subtypes": ["objective", "boss", "reward"]
+    }
+    ...
+  }
+```
+
+If you want to present them with specific forms, use `forms` and specify form
+IDs:
+
+```
+  {
+    ...
+    "children": {
+      "forms": [12, 16]
+    }
+    ...
+  }
+```
+
+When specifying forms by ID explicitly, the order you specify the forms in will
+be used when presenting options to the user.
+
+If only one option would be presented, the user will be taken directly to the
+appropriate form instead of being prompted to choose a form.
+
+The `fields` key can configure the behavior of custom fields on specific
+task subtypes. For example:
+
+```
+{
+  ...
+  "fields": {
+    "custom.some-field": {
+      "disabled": true
+    }
+  }
+  ...
+}
+```
+
+Each field supports these options:
+
+  - `disabled` //Optional bool.// Allows you to disable fields on certain
+    subtypes.
+  - `name` //Optional string.// Custom name of this field for the subtype.
+
 EOTEXT
       ,
       $subtype_default_key));
+
+    $priorities_description = $this->deformat(pht(<<<EOTEXT
+Allows you to edit or override the default priorities available in Maniphest,
+like "High", "Normal" and "Low". The configuration should contain a map of
+numeric priority values (where larger numbers correspond to higher priorities)
+to priority specifications (see defaults below for examples).
+
+The keys you can define for a priority are:
+
+  - `name` //Required string.// Name of the priority.
+  - `keywords` //Required list<string>.// List of unique keywords which identify
+    this priority, like "high" or "low". Each priority must have at least one
+    keyword and two priorities may not share the same keyword.
+  - `short` //Optional string.// Alternate shorter name, used in UIs where
+    there is less space available.
+  - `color` //Optional string.// Color for this priority, like "red" or
+    "blue".
+  - `disabled` //Optional bool.// Set to true to prevent users from choosing
+    this priority when creating or editing tasks. Existing tasks will not be
+    affected, and can be batch edited to a different priority or left to
+    eventually die out.
+
+You can choose the default priority for newly created tasks with
+"maniphest.default-priority".
+EOTEXT
+      ));
 
 
     return array(
@@ -367,30 +469,7 @@ EOTEXT
         $priority_type,
         $priority_defaults)
         ->setSummary(pht('Configure Maniphest priority names.'))
-        ->setDescription(
-          pht(
-            'Allows you to edit or override the default priorities available '.
-            'in Maniphest, like "High", "Normal" and "Low". The configuration '.
-            'should contain a map of priority constants to priority '.
-            'specifications (see defaults below for examples).'.
-            "\n\n".
-            'The keys you can define for a priority are:'.
-            "\n\n".
-            '  - `name` Name of the priority.'."\n".
-            '  - `short` Alternate shorter name, used in UIs where there is '.
-            '    not much space available.'."\n".
-            '  - `color` A color for this priority, like "red" or "blue".'.
-            '  - `keywords` An optional list of keywords which can '.
-            '     be used to select this priority when using `!priority` '.
-            '     commands in email.'."\n".
-            '  - `disabled` Optional boolean to prevent users from choosing '.
-            '     this priority when creating or editing tasks. Existing '.
-            '     tasks will be unaffected, and can be batch edited to a '.
-            '     different priority or left to eventually die out.'.
-            "\n\n".
-            'You can choose which priority is the default for newly created '.
-            'tasks with `%s`.',
-            'maniphest.default-priority')),
+        ->setDescription($priorities_description),
       $this->newOption('maniphest.statuses', $status_type, $status_defaults)
         ->setSummary(pht('Configure Maniphest task statuses.'))
         ->setDescription($status_description)
@@ -404,11 +483,6 @@ EOTEXT
             '%s configuration option. The default value (`90`) '.
             'corresponds to the default "Needs Triage" priority.',
             'maniphest.priorities')),
-      $this->newOption(
-        'metamta.maniphest.subject-prefix',
-        'string',
-        '[Maniphest]')
-        ->setDescription(pht('Subject prefix for Maniphest mail.')),
       $this->newOption('maniphest.points', $points_type, array())
         ->setSummary(pht('Configure point values for tasks.'))
         ->setDescription($points_description)

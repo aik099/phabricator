@@ -61,14 +61,14 @@ final class PhabricatorFileTransformListController
 
         $view_href = $file->getURIForTransform($xform);
         $view_href = new PhutilURI($view_href);
-        $view_href->setQueryParam('regenerate', 'true');
+        $view_href->replaceQueryParam('regenerate', 'true');
 
         $view_text = pht('Regenerate');
 
         $view_link = phutil_tag(
           'a',
           array(
-            'class' => 'small grey button',
+            'class' => 'small button button-grey',
             'href' => $view_href,
           ),
           $view_text);

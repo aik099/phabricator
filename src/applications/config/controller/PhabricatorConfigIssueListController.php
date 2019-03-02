@@ -33,44 +33,40 @@ final class PhabricatorConfigIssueListController
       PhabricatorSetupCheck::GROUP_OTHER,
       'fa-question-circle');
 
-    $no_issues = null;
-    if (empty($issues)) {
-      $no_issues = id(new PHUIInfoView())
+    $title = pht('Setup Issues');
+    $header = $this->buildHeaderView($title);
+
+    if (!$issues) {
+      $issue_list = id(new PHUIInfoView())
         ->setTitle(pht('No Issues'))
         ->appendChild(
           pht('Your install has no current setup issues to resolve.'))
         ->setSeverity(PHUIInfoView::SEVERITY_NOTICE);
+    } else {
+      $issue_list = array(
+        $important,
+        $php,
+        $mysql,
+        $other,
+      );
+
+      $issue_list = $this->buildConfigBoxView(pht('Issues'), $issue_list);
     }
 
-    $title = pht('Setup Issues');
-
-    $header = id(new PHUIHeaderView())
-      ->setHeader($title)
-      ->setProfileHeader(true);
-
-    $crumbs = $this
-      ->buildApplicationCrumbs()
-      ->addTextCrumb(pht('Setup Issues'))
+    $crumbs = $this->buildApplicationCrumbs()
+      ->addTextCrumb($title)
       ->setBorder(true);
 
-    $page = array(
-      $no_issues,
-      $important,
-      $php,
-      $mysql,
-      $other,
-    );
-
-    $content = id(new PhabricatorConfigPageView())
+    $content = id(new PHUITwoColumnView())
       ->setHeader($header)
-      ->setContent($page);
+      ->setNavigation($nav)
+      ->setFixed(true)
+      ->setMainColumn($issue_list);
 
     return $this->newPage()
       ->setTitle($title)
       ->setCrumbs($crumbs)
-      ->setNavigation($nav)
-      ->appendChild($content)
-      ->addClass('white-background');
+      ->appendChild($content);
   }
 
   private function buildIssueList(array $issues, $group, $fonticon) {

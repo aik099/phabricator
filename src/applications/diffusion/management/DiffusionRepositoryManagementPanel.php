@@ -25,6 +25,10 @@ abstract class DiffusionRepositoryManagementPanel
     return $this->repository;
   }
 
+  final public function getRequest() {
+    return $this->controller->getRequest();
+  }
+
   final public function setController(PhabricatorController $controller) {
     $this->controller = $controller;
     return $this;
@@ -37,35 +41,19 @@ abstract class DiffusionRepositoryManagementPanel
   abstract public function getManagementPanelLabel();
   abstract public function getManagementPanelOrder();
   abstract public function buildManagementPanelContent();
-  abstract public function buildManagementPanelCurtain();
+  public function buildManagementPanelCurtain() { return null; }
 
   public function getManagementPanelIcon() {
     return 'fa-pencil';
   }
 
-  protected function buildManagementPanelActions() {
-    return array();
+  public function getManagementPanelGroupKey() {
+    return DiffusionRepositoryManagementMainPanelGroup::PANELGROUPKEY;
   }
 
   public function shouldEnableForRepository(
     PhabricatorRepository $repository) {
     return true;
-  }
-
-  public function getNewActionList() {
-    $viewer = $this->getViewer();
-    $action_id = celerity_generate_unique_node_id();
-
-    return id(new PhabricatorActionListView())
-      ->setViewer($viewer)
-      ->setID($action_id);
-  }
-
-  public function getNewCurtainView(PhabricatorActionListView $action_list) {
-    $viewer = $this->getViewer();
-    return id(new PHUICurtainView())
-      ->setViewer($viewer)
-      ->setActionList($action_list);
   }
 
   public static function getAllPanels() {
@@ -74,13 +62,6 @@ abstract class DiffusionRepositoryManagementPanel
       ->setUniqueMethod('getManagementPanelKey')
       ->setSortMethod('getManagementPanelOrder')
       ->execute();
-  }
-
-  final protected function newBox($header_text, $body) {
-    return id(new PHUIObjectBoxView())
-      ->setHeaderText($header_text)
-      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
-      ->appendChild($body);
   }
 
   final protected function newTimeline() {
@@ -126,6 +107,38 @@ abstract class DiffusionRepositoryManagementPanel
 
   public function getPanelNavigationURI() {
     return $this->getPanelURI();
+  }
+
+  final protected function newActionList() {
+    $viewer = $this->getViewer();
+    $action_id = celerity_generate_unique_node_id();
+
+    return id(new PhabricatorActionListView())
+      ->setViewer($viewer)
+      ->setID($action_id);
+  }
+
+  final protected function newCurtainView() {
+    $viewer = $this->getViewer();
+
+    return id(new PHUICurtainView())
+      ->setViewer($viewer);
+  }
+
+  final protected function newBox($header_text, $body) {
+    $viewer = $this->getViewer();
+
+    $header = id(new PHUIHeaderView())
+      ->setViewer($viewer)
+      ->setHeader($header_text);
+
+    $view = id(new PHUIObjectBoxView())
+      ->setViewer($viewer)
+      ->setHeader($header)
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
+      ->appendChild($body);
+
+    return $view;
   }
 
 }

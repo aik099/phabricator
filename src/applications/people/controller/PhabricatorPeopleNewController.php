@@ -7,6 +7,11 @@ final class PhabricatorPeopleNewController
     $type = $request->getURIData('type');
     $admin = $request->getUser();
 
+    id(new PhabricatorAuthSessionEngine())->requireHighSecuritySession(
+      $admin,
+      $request,
+      $this->getApplicationURI());
+
     $is_bot = false;
     $is_list = false;
     switch ($type) {
@@ -102,8 +107,13 @@ final class PhabricatorPeopleNewController
               ->makeMailingListUser($user, true);
           }
 
-          if ($welcome_checked && !$is_bot && !$is_list) {
-            $user->sendWelcomeEmail($admin);
+          if ($welcome_checked) {
+            $welcome_engine = id(new PhabricatorPeopleWelcomeMailEngine())
+              ->setSender($admin)
+              ->setRecipient($user);
+            if ($welcome_engine->canSendMail()) {
+              $welcome_engine->sendMail();
+            }
           }
 
           $response = id(new AphrontRedirectResponse())
@@ -132,12 +142,15 @@ final class PhabricatorPeopleNewController
       ->setUser($admin);
 
     if ($is_bot) {
+      $title = pht('Create New Bot');
       $form->appendRemarkupInstructions(
         pht('You are creating a new **bot** user account.'));
     } else if ($is_list) {
+      $title = pht('Create New Mailing List');
       $form->appendRemarkupInstructions(
         pht('You are creating a new **mailing list** user account.'));
     } else {
+      $title = pht('Create New User');
       $form->appendRemarkupInstructions(
         pht('You are creating a new **standard** user account.'));
     }
@@ -205,25 +218,17 @@ final class PhabricatorPeopleNewController
             "`bot@yourcompany.com` if you prefer."));
     }
 
-
-    $title = pht('Create New User');
-
     $box = id(new PHUIObjectBoxView())
-      ->setHeaderText(pht('User'))
+      ->setHeaderText($title)
       ->setFormErrors($errors)
-      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
+      ->setBackground(PHUIObjectBoxView::WHITE_CONFIG)
       ->setForm($form);
 
     $crumbs = $this->buildApplicationCrumbs();
     $crumbs->addTextCrumb($title);
     $crumbs->setBorder(true);
 
-    $header = id(new PHUIHeaderView())
-      ->setHeader($title)
-      ->setHeaderIcon('fa-user');
-
     $view = id(new PHUITwoColumnView())
-      ->setHeader($header)
       ->setFooter($box);
 
     return $this->newPage()

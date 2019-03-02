@@ -21,7 +21,7 @@ final class PhabricatorProjectConfigOptions
 
   public function getOptions() {
     $default_icons = PhabricatorProjectIconSet::getDefaultConfiguration();
-    $icons_type = 'custom:PhabricatorProjectIconsConfigOptionType';
+    $icons_type = 'project.icons';
 
     $icons_description = $this->deformat(pht(<<<EOTEXT
 Allows you to change and customize the available project icons.
@@ -34,6 +34,8 @@ a dictionary, which may contain these keys:
   - `key` //Required string.// Internal key identifying the icon.
   - `name` //Required string.// Human-readable icon name.
   - `icon` //Required string.// Specifies which actual icon image to use.
+  - `image` //Optional string.// Selects a default image. Select an image from
+    `resources/builtins/projects/`.
   - `default` //Optional bool.// Selects a default icon. Exactly one icon must
     be selected as the default.
   - `disabled` //Optional bool.// If true, this icon will no longer be
@@ -48,7 +50,7 @@ EOTEXT
       ));
 
     $default_colors = PhabricatorProjectIconSet::getDefaultColorMap();
-    $colors_type = 'custom:PhabricatorProjectColorsConfigOptionType';
+    $colors_type = 'project.colors';
 
     $colors_description = $this->deformat(pht(<<<EOTEXT
 Allows you to relabel project colors.
@@ -81,6 +83,34 @@ EOTEXT
 
     $custom_field_type = 'custom:PhabricatorCustomFieldConfigOptionType';
 
+
+    $subtype_type = 'projects.subtypes';
+    $subtype_default_key = PhabricatorEditEngineSubtype::SUBTYPE_DEFAULT;
+    $subtype_example = array(
+      array(
+        'key' => $subtype_default_key,
+        'name' => pht('Project'),
+      ),
+      array(
+        'key' => 'team',
+        'name' => pht('Team'),
+      ),
+    );
+    $subtype_example = id(new PhutilJSON())->encodeAsList($subtype_example);
+
+    $subtype_default = array(
+      array(
+        'key' => $subtype_default_key,
+        'name' => pht('Project'),
+      ),
+    );
+
+    $subtype_description = $this->deformat(pht(<<<EOTEXT
+Allows you to define project subtypes. For a more detailed description of
+subtype configuration, see @{config:maniphest.subtypes}.
+EOTEXT
+      ));
+
     return array(
       $this->newOption('projects.custom-field-definitions', 'wild', array())
         ->setSummary(pht('Custom Projects fields.'))
@@ -100,6 +130,11 @@ EOTEXT
       $this->newOption('projects.colors', $colors_type, $default_colors)
         ->setSummary(pht('Adjust project colors.'))
         ->setDescription($colors_description),
+      $this->newOption('projects.subtypes', $subtype_type, $subtype_default)
+        ->setSummary(pht('Define project subtypes.'))
+        ->setDescription($subtype_description)
+        ->addExample($subtype_example, pht('Simple Subtypes')),
+
     );
   }
 

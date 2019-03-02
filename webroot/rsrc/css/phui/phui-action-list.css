@@ -7,6 +7,11 @@
   display: none;
 }
 
+!print .phabricator-action-list-view {
+  padding: 4px 0;
+  display: none;
+}
+
 .device .phuix-dropdown-menu .phabricator-action-list-view {
   /* When an action list view appears inside a dropdown menu, don't hide it
      by default. */
@@ -94,16 +99,38 @@
     color: {$sky};
 }
 
-.device-desktop .phabricator-action-view-href.action-item-red:hover
-  .phabricator-action-view-item {
-    background-color: {$sh-redbackground};
-    color: {$sh-redtext};
+.phabricator-action-view.action-item-red {
+  background-color: {$sh-redbackground};
 }
 
-.device-desktop .phabricator-action-view-href.action-item-red:hover
-  .phabricator-action-view-icon {
-    color: {$red};
+.phabricator-action-view.action-item-green {
+  background-color: {$sh-greenbackground};
 }
+
+.phabricator-action-view.action-item-red .phabricator-action-view-item,
+.phabricator-action-view.action-item-red .phabricator-action-view-icon {
+  color: {$sh-redtext};
+}
+
+.phabricator-action-view.action-item-green .phabricator-action-view-item,
+.phabricator-action-view.action-item-green .phabricator-action-view-icon {
+  color: {$sh-greentext};
+}
+
+.device-desktop .phabricator-action-view.action-item-red:hover
+  .phabricator-action-view-item,
+.device-desktop .phabricator-action-view.action-item-red:hover
+  .phabricator-action-view-icon {
+  color: {$red};
+}
+
+.device-desktop .phabricator-action-view.action-item-green:hover
+  .phabricator-action-view-item,
+.device-desktop .phabricator-action-view.action-item-green:hover
+  .phabricator-action-view-icon {
+  color: {$green};
+}
+
 
 .phabricator-action-view-label .phabricator-action-view-item,
 .phabricator-action-view-type-label .phabricator-action-view-item {
@@ -114,12 +141,6 @@
   display: block;
   text-transform: uppercase;
   -webkit-font-smoothing: antialiased;
-}
-
-.device-desktop li.phabricator-action-view-label:hover
-  .phabricator-action-view-item {
-    background-color: #fff;
-    color: {$bluetext};
 }
 
 .phabricator-action-view + .phabricator-action-view-label {
@@ -161,7 +182,6 @@
   .phabricator-action-view-icon,
 .device-desktop .phabricator-action-view-disabled:hover
   button.phabricator-action-view-icon {
-  background-color: {$greybackground};
   color: {$lightgreytext};
 }
 

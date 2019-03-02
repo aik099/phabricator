@@ -362,7 +362,7 @@ final class PhabricatorRepositoryURI
       return PhabricatorEnv::getEnvConfig('diffusion.ssh-port');
     }
 
-    // If Phabricator is running on a nonstandard port, use that as the defualt
+    // If Phabricator is running on a nonstandard port, use that as the default
     // port for URIs with the same protocol.
 
     $is_http = ($protocol == self::BUILTIN_PROTOCOL_HTTP);
@@ -605,18 +605,8 @@ final class PhabricatorRepositoryURI
     return new DiffusionURIEditor();
   }
 
-  public function getApplicationTransactionObject() {
-    return $this;
-  }
-
   public function getApplicationTransactionTemplate() {
     return new PhabricatorRepositoryURITransaction();
-  }
-
-  public function willRenderTimeline(
-    PhabricatorApplicationTransactionView $timeline,
-    AphrontRequest $request) {
-    return $timeline;
   }
 
 

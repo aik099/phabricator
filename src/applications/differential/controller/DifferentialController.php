@@ -2,6 +2,10 @@
 
 abstract class DifferentialController extends PhabricatorController {
 
+  private $packageChangesetMap;
+  private $pathPackageMap;
+  private $authorityPackages;
+
   public function buildSideNavView($for_app = false) {
     $viewer = $this->getRequest()->getUser();
 
@@ -21,6 +25,98 @@ abstract class DifferentialController extends PhabricatorController {
     return $this->buildSideNavView(true)->getMenu();
   }
 
+  protected function buildPackageMaps(array $changesets) {
+    assert_instances_of($changesets, 'DifferentialChangeset');
+
+    $this->packageChangesetMap = array();
+    $this->pathPackageMap = array();
+    $this->authorityPackages = array();
+
+    if (!$changesets) {
+      return;
+    }
+
+    $viewer = $this->getViewer();
+
+    $have_owners = PhabricatorApplication::isClassInstalledForViewer(
+      'PhabricatorOwnersApplication',
+      $viewer);
+    if (!$have_owners) {
+      return;
+    }
+
+    $changeset = head($changesets);
+    $diff = $changeset->getDiff();
+    $repository_phid = $diff->getRepositoryPHID();
+    if (!$repository_phid) {
+      return;
+    }
+
+    if ($viewer->getPHID()) {
+      $packages = id(new PhabricatorOwnersPackageQuery())
+        ->setViewer($viewer)
+        ->withStatuses(array(PhabricatorOwnersPackage::STATUS_ACTIVE))
+        ->withAuthorityPHIDs(array($viewer->getPHID()))
+        ->execute();
+      $this->authorityPackages = $packages;
+    }
+
+    $paths = mpull($changesets, 'getOwnersFilename');
+
+    $control_query = id(new PhabricatorOwnersPackageQuery())
+      ->setViewer($viewer)
+      ->withStatuses(array(PhabricatorOwnersPackage::STATUS_ACTIVE))
+      ->withControl($repository_phid, $paths);
+    $control_query->execute();
+
+    foreach ($changesets as $changeset) {
+      $changeset_path = $changeset->getOwnersFilename();
+
+      $packages = $control_query->getControllingPackagesForPath(
+        $repository_phid,
+        $changeset_path);
+
+      // If this particular changeset is generated code and the package does
+      // not match generated code, remove it from the list.
+      if ($changeset->isGeneratedChangeset()) {
+        foreach ($packages as $key => $package) {
+          if ($package->getMustMatchUngeneratedPaths()) {
+            unset($packages[$key]);
+          }
+        }
+      }
+
+      $this->pathPackageMap[$changeset_path] = $packages;
+      foreach ($packages as $package) {
+        $this->packageChangesetMap[$package->getPHID()][] = $changeset;
+      }
+    }
+  }
+
+  protected function getAuthorityPackages() {
+    if ($this->authorityPackages === null) {
+      throw new PhutilInvalidStateException('buildPackageMaps');
+    }
+    return $this->authorityPackages;
+  }
+
+  protected function getChangesetPackages(DifferentialChangeset $changeset) {
+    if ($this->pathPackageMap === null) {
+      throw new PhutilInvalidStateException('buildPackageMaps');
+    }
+
+    $path = $changeset->getOwnersFilename();
+    return idx($this->pathPackageMap, $path, array());
+  }
+
+  protected function getPackageChangesets($package_phid) {
+    if ($this->packageChangesetMap === null) {
+      throw new PhutilInvalidStateException('buildPackageMaps');
+    }
+
+    return idx($this->packageChangesetMap, $package_phid, array());
+  }
+
   protected function buildTableOfContents(
     array $changesets,
     array $visible_changesets,
@@ -29,40 +125,8 @@ abstract class DifferentialController extends PhabricatorController {
 
     $toc_view = id(new PHUIDiffTableOfContentsListView())
       ->setViewer($viewer)
-      ->setBare(true);
-
-    $have_owners = PhabricatorApplication::isClassInstalledForViewer(
-      'PhabricatorOwnersApplication',
-      $viewer);
-    if ($have_owners) {
-      $repository_phid = null;
-      if ($changesets) {
-        $changeset = head($changesets);
-        $diff = $changeset->getDiff();
-        $repository_phid = $diff->getRepositoryPHID();
-      }
-
-      if (!$repository_phid) {
-        $have_owners = false;
-      } else {
-        if ($viewer->getPHID()) {
-          $packages = id(new PhabricatorOwnersPackageQuery())
-            ->setViewer($viewer)
-            ->withStatuses(array(PhabricatorOwnersPackage::STATUS_ACTIVE))
-            ->withAuthorityPHIDs(array($viewer->getPHID()))
-            ->execute();
-          $toc_view->setAuthorityPackages($packages);
-        }
-
-        $paths = mpull($changesets, 'getOwnersFilename');
-
-        $control_query = id(new PhabricatorOwnersPackageQuery())
-          ->setViewer($viewer)
-          ->withStatuses(array(PhabricatorOwnersPackage::STATUS_ACTIVE))
-          ->withControl($repository_phid, $paths);
-        $control_query->execute();
-      }
-    }
+      ->setBare(true)
+      ->setAuthorityPackages($this->getAuthorityPackages());
 
     foreach ($changesets as $changeset_id => $changeset) {
       $is_visible = isset($visible_changesets[$changeset_id]);
@@ -78,12 +142,8 @@ abstract class DifferentialController extends PhabricatorController {
         ->setCoverage(idx($coverage, $filename))
         ->setCoverageID($coverage_id);
 
-      if ($have_owners) {
-        $packages = $control_query->getControllingPackagesForPath(
-          $repository_phid,
-          $changeset->getOwnersFilename());
-        $item->setPackages($packages);
-      }
+      $packages = $this->getChangesetPackages($changeset);
+      $item->setPackages($packages);
 
       $toc_view->addItem($item);
     }
@@ -132,9 +192,10 @@ abstract class DifferentialController extends PhabricatorController {
     $all_target_phids = array_mergev($target_map);
 
     if ($all_target_phids) {
-      $unit_messages = id(new HarbormasterBuildUnitMessage())->loadAllWhere(
-        'buildTargetPHID IN (%Ls)',
-        $all_target_phids);
+      $unit_messages = id(new HarbormasterBuildUnitMessageQuery())
+        ->setViewer($viewer)
+        ->withBuildTargetPHIDs($all_target_phids)
+        ->execute();
       $unit_messages = mgroup($unit_messages, 'getBuildTargetPHID');
     } else {
       $unit_messages = array();
@@ -167,7 +228,7 @@ abstract class DifferentialController extends PhabricatorController {
       // by default and let the user toggle the rest. With modern messages,
       // we can send the user to the Harbormaster detail page. Just show
       // "a lot" of messages in legacy cases to try to strike a balance
-      // between implementation simplicitly and compatibility.
+      // between implementation simplicity and compatibility.
       $legacy_messages = array_slice($legacy_messages, 0, 100);
 
       $messages = array();

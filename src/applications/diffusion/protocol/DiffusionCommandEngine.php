@@ -135,6 +135,12 @@ abstract class DiffusionCommandEngine extends Phobject {
 
     $future->setEnv($env);
 
+    // See T13108. By default, don't let any cluster command run indefinitely
+    // to try to avoid cases where `git fetch` hangs for some reason and we're
+    // left sitting with a held lock forever.
+    $repository = $this->getRepository();
+    $future->setTimeout($repository->getEffectiveCopyTimeLimit());
+
     return $future;
   }
 
@@ -178,7 +184,7 @@ abstract class DiffusionCommandEngine extends Phobject {
       if (!$device) {
         throw new Exception(
           pht(
-            'Attempting to build a reposiory command (for repository "%s") '.
+            'Attempting to build a repository command (for repository "%s") '.
             'as device, but this host ("%s") is not configured as a cluster '.
             'device.',
             $repository->getDisplayName(),

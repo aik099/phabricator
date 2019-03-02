@@ -81,13 +81,13 @@ final class HeraldNewController extends HeraldController {
         }
 
         if (!$errors && $done) {
-          $uri = id(new PhutilURI('edit/'))
-            ->setQueryParams(
-              array(
-                'content_type' => $content_type,
-                'rule_type' => $rule_type,
-                'targetPHID' => $target_phid,
-              ));
+          $params = array(
+            'content_type' => $content_type,
+            'rule_type' => $rule_type,
+            'targetPHID' => $target_phid,
+          );
+
+          $uri = new PhutilURI('edit/', $params);
           $uri = $this->getApplicationURI($uri);
           return id(new AphrontRedirectResponse())->setURI($uri);
         }
@@ -126,13 +126,13 @@ final class HeraldNewController extends HeraldController {
           ->addHiddenInput('step', 2)
           ->appendChild($rule_types);
 
+        $params = array(
+          'content_type' => $content_type,
+          'step' => '0',
+        );
+
         $cancel_text = pht('Back');
-        $cancel_uri = id(new PhutilURI('new/'))
-          ->setQueryParams(
-            array(
-              'content_type' => $content_type,
-              'step' => 0,
-            ));
+        $cancel_uri = new PhutilURI('new/', $params);
         $cancel_uri = $this->getApplicationURI($cancel_uri);
         $title = pht('Create Herald Rule: %s',
           idx($content_type_map, $content_type));
@@ -173,14 +173,14 @@ final class HeraldNewController extends HeraldController {
               ->setValue($request->getStr('objectName'))
               ->setLabel(pht('Object')));
 
+        $params = array(
+          'content_type' => $content_type,
+          'rule_type' => $rule_type,
+          'step' => 1,
+        );
+
         $cancel_text = pht('Back');
-        $cancel_uri = id(new PhutilURI('new/'))
-          ->setQueryParams(
-            array(
-              'content_type' => $content_type,
-              'rule_type' => $rule_type,
-              'step' => 1,
-            ));
+        $cancel_uri = new PhutilURI('new/', $params);
         $cancel_uri = $this->getApplicationURI($cancel_uri);
         $title = pht('Create Herald Rule: %s',
           idx($content_type_map, $content_type));
@@ -194,8 +194,9 @@ final class HeraldNewController extends HeraldController {
           ->addCancelButton($cancel_uri, $cancel_text));
 
     $form_box = id(new PHUIObjectBoxView())
+      ->setHeaderText($title)
       ->setFormErrors($errors)
-      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
+      ->setBackground(PHUIObjectBoxView::WHITE_CONFIG)
       ->setForm($form);
 
     $crumbs = $this
@@ -203,12 +204,7 @@ final class HeraldNewController extends HeraldController {
       ->addTextCrumb(pht('Create Rule'))
       ->setBorder(true);
 
-    $header = id(new PHUIHeaderView())
-      ->setHeader($title)
-      ->setHeaderIcon('fa-plus-square');
-
     $view = id(new PHUITwoColumnView())
-      ->setHeader($header)
       ->setFooter($form_box);
 
     return $this->newPage()

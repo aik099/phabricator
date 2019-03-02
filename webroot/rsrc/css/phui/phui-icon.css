@@ -45,6 +45,14 @@ img.phui-image-disabled {
   filter: grayscale(100%);
 }
 
+.phui-icon-view.bluetext {
+  color: {$bluetext};
+}
+
+.phui-icon-view.invisible {
+  visibility: hidden;
+}
+
 /* - Icon in a Circle ------------------------------------------------------- */
 
 .phui-icon-circle {
@@ -144,7 +152,7 @@ a.phui-icon-circle.hover-red:hover .phui-icon-view {
   color: {$red};
 }
 
-a.phui-icon-circle .phui-icon-view.phui-icon-circle-state-icon {
+.phui-icon-circle .phui-icon-view.phui-icon-circle-state-icon {
   position: absolute;
   width: 14px;
   height: 14px;
@@ -174,4 +182,25 @@ a.phui-icon-circle .phui-icon-view.phui-icon-circle-state-icon {
 a.phui-icon-view.phui-icon-square:hover {
   text-decoration: none;
   color: #fff;
+}
+
+
+.phui-icon-emblem {
+  border-radius: 4px;
+}
+
+.phui-timeline-extra .phui-icon-emblem {
+  padding: 4px 6px;
+}
+
+.phui-icon-emblem-violet {
+  background-color: {$violet};
+}
+
+.phui-icon-emblem-red {
+  background-color: {$red};
+}
+
+.phui-icon-emblem-pink {
+  background-color: {$pink};
 }

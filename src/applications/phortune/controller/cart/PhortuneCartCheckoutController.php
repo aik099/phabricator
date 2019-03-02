@@ -134,13 +134,13 @@ final class PhortuneCartCheckoutController
 
     $account_id = $account->getID();
 
+    $params = array(
+      'merchantID' => $merchant->getID(),
+      'cartID' => $cart->getID(),
+    );
+
     $payment_method_uri = $this->getApplicationURI("{$account_id}/card/new/");
-    $payment_method_uri = new PhutilURI($payment_method_uri);
-    $payment_method_uri->setQueryParams(
-      array(
-        'merchantID' => $merchant->getID(),
-        'cartID' => $cart->getID(),
-      ));
+    $payment_method_uri = new PhutilURI($payment_method_uri, $params);
 
     $form = id(new AphrontFormView())
       ->setUser($viewer)
@@ -152,7 +152,7 @@ final class PhortuneCartCheckoutController
       $new_method = javelin_tag(
         'a',
         array(
-          'class' => 'button grey',
+          'class' => 'button button-grey',
           'href'  => $payment_method_uri,
         ),
         pht('Add New Payment Method'));

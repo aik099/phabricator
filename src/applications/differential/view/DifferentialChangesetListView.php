@@ -7,13 +7,14 @@ final class DifferentialChangesetListView extends AphrontView {
   private $references = array();
   private $inlineURI;
   private $renderURI = '/differential/changeset/';
-  private $whitespace;
   private $background;
   private $header;
+  private $isStandalone;
 
   private $standaloneURI;
   private $leftRawFileURI;
   private $rightRawFileURI;
+  private $inlineListURI;
 
   private $symbolIndexes = array();
   private $repository;
@@ -64,6 +65,15 @@ final class DifferentialChangesetListView extends AphrontView {
     return $this;
   }
 
+  public function setInlineListURI($uri) {
+    $this->inlineListURI = $uri;
+    return $this;
+  }
+
+  public function getInlineListURI() {
+    return $this->inlineListURI;
+  }
+
   public function setRepository(PhabricatorRepository $repository) {
     $this->repository = $repository;
     return $this;
@@ -89,11 +99,6 @@ final class DifferentialChangesetListView extends AphrontView {
     return $this;
   }
 
-  public function setWhitespace($whitespace) {
-    $this->whitespace = $whitespace;
-    return $this;
-  }
-
   public function setVsMap(array $vs_map) {
     $this->vsMap = $vs_map;
     return $this;
@@ -112,6 +117,15 @@ final class DifferentialChangesetListView extends AphrontView {
     $this->leftRawFileURI = $l;
     $this->rightRawFileURI = $r;
     return $this;
+  }
+
+  public function setIsStandalone($is_standalone) {
+    $this->isStandalone = $is_standalone;
+    return $this;
+  }
+
+  public function getIsStandalone() {
+    return $this->isStandalone;
   }
 
   public function setBackground($background) {
@@ -160,7 +174,6 @@ final class DifferentialChangesetListView extends AphrontView {
       $detail->setRenderingRef($ref);
 
       $detail->setRenderURI($this->renderURI);
-      $detail->setWhitespace($this->whitespace);
       $detail->setRenderer($renderer);
 
       if ($this->getParser()) {
@@ -174,7 +187,7 @@ final class DifferentialChangesetListView extends AphrontView {
           $load = javelin_tag(
             'a',
             array(
-              'class' => 'button grey',
+              'class' => 'button button-grey',
               'href' => '#'.$uniq_id,
               'sigil' => 'differential-load',
               'meta' => array(
@@ -203,15 +216,13 @@ final class DifferentialChangesetListView extends AphrontView {
 
     $this->requireResource('aphront-tooltip-css');
 
-    $show_objectives =
-      PhabricatorEnv::getEnvConfig('phabricator.show-prototypes');
-
     $this->initBehavior(
       'differential-populate',
       array(
       'changesetViewIDs' => $ids,
       'inlineURI' => $this->inlineURI,
-      'showObjectives' => $show_objectives,
+      'inlineListURI' => $this->inlineListURI,
+      'isStandalone' => $this->getIsStandalone(),
       'pht' => array(
         'Open in Editor' => pht('Open in Editor'),
         'Show All Context' => pht('Show All Context'),
@@ -261,15 +272,15 @@ final class DifferentialChangesetListView extends AphrontView {
         'You must select a comment to mark done.' =>
           pht('You must select a comment to mark done.'),
 
-        'Hide or show inline comment.' =>
-          pht('Hide or show inline comment.'),
+        'Collapse or expand inline comment.' =>
+          pht('Collapse or expand inline comment.'),
         'You must select a comment to hide.' =>
           pht('You must select a comment to hide.'),
 
-        'Jump to next inline comment, including hidden comments.' =>
-          pht('Jump to next inline comment, including hidden comments.'),
-        'Jump to previous inline comment, including hidden comments.' =>
-          pht('Jump to previous inline comment, including hidden comments.'),
+        'Jump to next inline comment, including collapsed comments.' =>
+          pht('Jump to next inline comment, including collapsed comments.'),
+        'Jump to previous inline comment, including collapsed comments.' =>
+          pht('Jump to previous inline comment, including collapsed comments.'),
 
         'This file content has been collapsed.' =>
           pht('This file content has been collapsed.'),
@@ -279,6 +290,25 @@ final class DifferentialChangesetListView extends AphrontView {
           pht('Hide or show the current file.'),
         'You must select a file to hide or show.' =>
           pht('You must select a file to hide or show.'),
+
+        'Unsaved' => pht('Unsaved'),
+        'Unsubmitted' => pht('Unsubmitted'),
+        'Comments' => pht('Comments'),
+
+        'Hide "Done" Inlines' => pht('Hide "Done" Inlines'),
+        'Hide Collapsed Inlines' => pht('Hide Collapsed Inlines'),
+        'Hide Older Inlines' => pht('Hide Older Inlines'),
+        'Hide All Inlines' => pht('Hide All Inlines'),
+        'Show All Inlines' => pht('Show All Inlines'),
+
+        'List Inline Comments' => pht('List Inline Comments'),
+        'Display Options' => pht('Display Options'),
+
+        'Hide or show all inline comments.' =>
+          pht('Hide or show all inline comments.'),
+
+        'Finish editing inline comments before changing display modes.' =>
+          pht('Finish editing inline comments before changing display modes.'),
       ),
     ));
 
@@ -315,13 +345,12 @@ final class DifferentialChangesetListView extends AphrontView {
     $meta = array();
 
     $qparams = array(
-      'ref'         => $ref,
-      'whitespace'  => $this->whitespace,
+      'ref' => $ref,
     );
 
     if ($this->standaloneURI) {
       $uri = new PhutilURI($this->standaloneURI);
-      $uri->setQueryParams($uri->getQueryParams() + $qparams);
+      $uri = $this->appendDefaultQueryParams($uri, $qparams);
       $meta['standaloneURI'] = (string)$uri;
     }
 
@@ -344,7 +373,7 @@ final class DifferentialChangesetListView extends AphrontView {
     if ($this->leftRawFileURI) {
       if ($change != DifferentialChangeType::TYPE_ADD) {
         $uri = new PhutilURI($this->leftRawFileURI);
-        $uri->setQueryParams($uri->getQueryParams() + $qparams);
+        $uri = $this->appendDefaultQueryParams($uri, $qparams);
         $meta['leftURI'] = (string)$uri;
       }
     }
@@ -353,7 +382,7 @@ final class DifferentialChangesetListView extends AphrontView {
       if ($change != DifferentialChangeType::TYPE_DELETE &&
           $change != DifferentialChangeType::TYPE_MULTICOPY) {
         $uri = new PhutilURI($this->rightRawFileURI);
-        $uri->setQueryParams($uri->getQueryParams() + $qparams);
+        $uri = $this->appendDefaultQueryParams($uri, $qparams);
         $meta['rightURI'] = (string)$uri;
       }
     }
@@ -382,6 +411,25 @@ final class DifferentialChangesetListView extends AphrontView {
       ->setMetadata($meta)
       ->addSigil('differential-view-options');
 
+  }
+
+  private function appendDefaultQueryParams(PhutilURI $uri, array $params) {
+    // Add these default query parameters to the query string if they do not
+    // already exist.
+
+    $have = array();
+    foreach ($uri->getQueryParamsAsPairList() as $pair) {
+      list($key, $value) = $pair;
+      $have[$key] = true;
+    }
+
+    foreach ($params as $key => $value) {
+      if (!isset($have[$key])) {
+        $uri->appendQueryParam($key, $value);
+      }
+    }
+
+    return $uri;
   }
 
 }

@@ -5,7 +5,7 @@ final class PhabricatorWorkerTriggerQuery
 
   // NOTE: This is a PolicyAware query so it can work with other infrastructure
   // like handles; triggers themselves are low-level and do not have
-  // meaninguful policies.
+  // meaningful policies.
 
   const ORDER_ID = 'id';
   const ORDER_EXECUTION = 'execution';
@@ -69,7 +69,7 @@ final class PhabricatorWorkerTriggerQuery
 
   protected function nextPage(array $page) {
     // NOTE: We don't implement paging because we don't currently ever need
-    // it and paging ORDER_EXCUTION is a hassle.
+    // it and paging ORDER_EXECUTION is a hassle.
     throw new PhutilMethodNotImplementedException();
   }
 
@@ -145,67 +145,71 @@ final class PhabricatorWorkerTriggerQuery
     return $triggers;
   }
 
-  protected function buildJoinClause(AphrontDatabaseConnection $conn_r) {
+  protected function buildJoinClause(AphrontDatabaseConnection $conn) {
     $joins = array();
 
     if (($this->nextEpochMin !== null) ||
         ($this->nextEpochMax !== null) ||
         ($this->order == self::ORDER_EXECUTION)) {
       $joins[] = qsprintf(
-        $conn_r,
+        $conn,
         'JOIN %T e ON e.triggerID = t.id',
         id(new PhabricatorWorkerTriggerEvent())->getTableName());
     }
 
-    return implode(' ', $joins);
+    if ($joins) {
+      return qsprintf($conn, '%LJ', $joins);
+    } else {
+      return qsprintf($conn, '');
+    }
   }
 
-  protected function buildWhereClause(AphrontDatabaseConnection $conn_r) {
+  protected function buildWhereClause(AphrontDatabaseConnection $conn) {
     $where = array();
 
     if ($this->ids !== null) {
       $where[] = qsprintf(
-        $conn_r,
+        $conn,
         't.id IN (%Ld)',
         $this->ids);
     }
 
     if ($this->phids !== null) {
       $where[] = qsprintf(
-        $conn_r,
+        $conn,
         't.phid IN (%Ls)',
         $this->phids);
     }
 
     if ($this->versionMin !== null) {
       $where[] = qsprintf(
-        $conn_r,
+        $conn,
         't.triggerVersion >= %d',
         $this->versionMin);
     }
 
     if ($this->versionMax !== null) {
       $where[] = qsprintf(
-        $conn_r,
+        $conn,
         't.triggerVersion <= %d',
         $this->versionMax);
     }
 
     if ($this->nextEpochMin !== null) {
       $where[] = qsprintf(
-        $conn_r,
+        $conn,
         'e.nextEventEpoch >= %d',
         $this->nextEpochMin);
     }
 
     if ($this->nextEpochMax !== null) {
       $where[] = qsprintf(
-        $conn_r,
+        $conn,
         'e.nextEventEpoch <= %d',
         $this->nextEpochMax);
     }
 
-    return $this->formatWhereClause($where);
+    return $this->formatWhereClause($conn, $where);
   }
 
   private function buildOrderClause(AphrontDatabaseConnection $conn_r) {

@@ -10,7 +10,8 @@ final class DifferentialRevisionResignTransaction
     return pht('Resign as Reviewer');
   }
 
-  protected function getRevisionActionDescription() {
+  protected function getRevisionActionDescription(
+    DifferentialRevision $revision) {
     return pht('You will resign as a reviewer for this change.');
   }
 
@@ -90,6 +91,14 @@ final class DifferentialRevisionResignTransaction
       '%s resigned from %s.',
       $this->renderAuthor(),
       $this->renderObject());
+  }
+
+  public function getTransactionTypeForConduit($xaction) {
+    return 'resign';
+  }
+
+  public function getFieldValuesForConduit($object, $data) {
+    return array();
   }
 
 }

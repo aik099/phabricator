@@ -74,7 +74,6 @@ final class ManiphestReportController extends ManiphestController {
     $table = new ManiphestTransaction();
     $conn = $table->establishConnection('r');
 
-    $joins = '';
     if ($project_phid) {
       $joins = qsprintf(
         $conn,
@@ -84,16 +83,86 @@ final class ManiphestReportController extends ManiphestController {
         PhabricatorEdgeConfig::TABLE_NAME_EDGE,
         PhabricatorProjectObjectHasProjectEdgeType::EDGECONST,
         $project_phid);
+      $create_joins = qsprintf(
+        $conn,
+        'JOIN %T p ON p.src = t.phid AND p.type = %d AND p.dst = %s',
+        PhabricatorEdgeConfig::TABLE_NAME_EDGE,
+        PhabricatorProjectObjectHasProjectEdgeType::EDGECONST,
+        $project_phid);
+    } else {
+      $joins = qsprintf($conn, '');
+      $create_joins = qsprintf($conn, '');
     }
 
     $data = queryfx_all(
       $conn,
-      'SELECT x.oldValue, x.newValue, x.dateCreated FROM %T x %Q
-        WHERE transactionType = %s
+      'SELECT x.transactionType, x.oldValue, x.newValue, x.dateCreated
+        FROM %T x %Q
+        WHERE transactionType IN (%Ls)
         ORDER BY x.dateCreated ASC',
       $table->getTableName(),
       $joins,
-      ManiphestTaskStatusTransaction::TRANSACTIONTYPE);
+      array(
+        ManiphestTaskStatusTransaction::TRANSACTIONTYPE,
+        ManiphestTaskMergedIntoTransaction::TRANSACTIONTYPE,
+      ));
+
+    // See PHI273. After the move to EditEngine, we no longer create a
+    // "status" transaction if a task is created directly into the default
+    // status. This likely impacted API/email tasks after 2016 and all other
+    // tasks after late 2017. Until Facts can fix this properly, use the
+    // task creation dates to generate synthetic transactions which look like
+    // the older transactions that this page expects.
+
+    $default_status = ManiphestTaskStatus::getDefaultStatus();
+    $duplicate_status = ManiphestTaskStatus::getDuplicateStatus();
+
+    // Build synthetic transactions which take status from `null` to the
+    // default value.
+    $create_rows = queryfx_all(
+      $conn,
+      'SELECT t.dateCreated FROM %T t %Q',
+      id(new ManiphestTask())->getTableName(),
+      $create_joins);
+    foreach ($create_rows as $key => $create_row) {
+      $create_rows[$key] = array(
+        'transactionType' => 'status',
+        'oldValue' => null,
+        'newValue' => $default_status,
+        'dateCreated' => $create_row['dateCreated'],
+      );
+    }
+
+    // Remove any actual legacy status transactions which take status from
+    // `null` to any open status.
+    foreach ($data as $key => $row) {
+      if ($row['transactionType'] != 'status') {
+        continue;
+      }
+
+      $oldv = trim($row['oldValue'], '"');
+      $newv = trim($row['newValue'], '"');
+
+      // If this is a status change, preserve it.
+      if ($oldv != 'null') {
+        continue;
+      }
+
+      // If this task was created directly into a closed status, preserve
+      // the transaction.
+      if (!ManiphestTaskStatus::isOpenStatus($newv)) {
+        continue;
+      }
+
+      // If this is a legacy "create" transaction, discard it in favor of the
+      // synthetic one.
+      unset($data[$key]);
+    }
+
+    // Merge the synthetic rows into the real transactions.
+    $data = array_merge($create_rows, $data);
+    $data = array_values($data);
+    $data = isort($data, 'dateCreated');
 
     $stats = array();
     $day_buckets = array();
@@ -101,10 +170,21 @@ final class ManiphestReportController extends ManiphestController {
     $open_tasks = array();
 
     foreach ($data as $key => $row) {
-
-      // NOTE: Hack to avoid json_decode().
-      $oldv = trim($row['oldValue'], '"');
-      $newv = trim($row['newValue'], '"');
+      switch ($row['transactionType']) {
+        case ManiphestTaskStatusTransaction::TRANSACTIONTYPE:
+          // NOTE: Hack to avoid json_decode().
+          $oldv = trim($row['oldValue'], '"');
+          $newv = trim($row['newValue'], '"');
+          break;
+        case ManiphestTaskMergedIntoTransaction::TRANSACTIONTYPE:
+          // NOTE: Merging a task does not generate a "status" transaction.
+          // We pretend it did. Note that this is not always accurate: it is
+          // possible to merge a task which was previously closed, but this
+          // fake transaction always counts a merge as a closure.
+          $oldv = $default_status;
+          $newv = $duplicate_status;
+          break;
+      }
 
       if ($oldv == 'null') {
         $old_is_open = false;
@@ -745,7 +825,7 @@ final class ManiphestReportController extends ManiphestController {
     // and equal distance in the past. This is so users can type "6 days" (which
     // means "6 days from now") and get the behavior of "6 days ago", rather
     // than no results (because the window epoch is in the future). This might
-    // be a little confusing because it casues "tomorrow" to mean "yesterday"
+    // be a little confusing because it causes "tomorrow" to mean "yesterday"
     // and "2022" (or whatever) to mean "ten years ago", but these inputs are
     // nonsense anyway.
 

@@ -16,6 +16,7 @@ final class PhabricatorCalendarEvent extends PhabricatorCalendarDAO
     PhabricatorAuthorAwareInterface,
     PhabricatorSpacesInterface,
     PhabricatorFulltextInterface,
+    PhabricatorFerretInterface,
     PhabricatorConduitResultInterface {
 
   protected $name;
@@ -1311,20 +1312,10 @@ final class PhabricatorCalendarEvent extends PhabricatorCalendarDAO
     return new PhabricatorCalendarEventEditor();
   }
 
-  public function getApplicationTransactionObject() {
-    return $this;
-  }
-
   public function getApplicationTransactionTemplate() {
     return new PhabricatorCalendarEventTransaction();
   }
 
-  public function willRenderTimeline(
-    PhabricatorApplicationTransactionView $timeline,
-    AphrontRequest $request) {
-
-    return $timeline;
-  }
 
 /* -(  PhabricatorSubscribableInterface  )----------------------------------- */
 
@@ -1386,6 +1377,14 @@ final class PhabricatorCalendarEvent extends PhabricatorCalendarDAO
 
   public function newFulltextEngine() {
     return new PhabricatorCalendarEventFulltextEngine();
+  }
+
+
+/* -(  PhabricatorFerretInterface  )----------------------------------------- */
+
+
+  public function newFerretEngine() {
+    return new PhabricatorCalendarEventFerretEngine();
   }
 
 

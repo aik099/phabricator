@@ -38,7 +38,7 @@ final class HarbormasterBuildStep extends HarbormasterDAO
         // T6203/NULLABILITY
         // This should not be nullable. Current `null` values indicate steps
         // which predated editable names. These should be backfilled with
-        // default names, then the code for handling `null` shoudl be removed.
+        // default names, then the code for handling `null` should be removed.
         'name' => 'text255?',
         'stepAutoKey' => 'text32?',
       ),
@@ -100,6 +100,19 @@ final class HarbormasterBuildStep extends HarbormasterDAO
     return ($this->getStepAutoKey() !== null);
   }
 
+  public function willStartBuild(
+    PhabricatorUser $viewer,
+    HarbormasterBuildable $buildable,
+    HarbormasterBuild $build,
+    HarbormasterBuildPlan $plan) {
+    return $this->getStepImplementation()->willStartBuild(
+      $viewer,
+      $buildable,
+      $build,
+      $plan,
+      $this);
+  }
+
 
 /* -(  PhabricatorApplicationTransactionInterface  )------------------------- */
 
@@ -108,19 +121,8 @@ final class HarbormasterBuildStep extends HarbormasterDAO
     return new HarbormasterBuildStepEditor();
   }
 
-  public function getApplicationTransactionObject() {
-    return $this;
-  }
-
   public function getApplicationTransactionTemplate() {
     return new HarbormasterBuildStepTransaction();
-  }
-
-  public function willRenderTimeline(
-    PhabricatorApplicationTransactionView $timeline,
-    AphrontRequest $request) {
-
-    return $timeline;
   }
 
 

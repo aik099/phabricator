@@ -9,7 +9,13 @@ final class PhabricatorMySQLSetupCheck extends PhabricatorSetupCheck {
   protected function executeChecks() {
     $refs = PhabricatorDatabaseRef::getActiveDatabaseRefs();
     foreach ($refs as $ref) {
-      $this->executeRefChecks($ref);
+      try {
+        $this->executeRefChecks($ref);
+      } catch (AphrontConnectionQueryException $ex) {
+        // If we're unable to connect to a host, just skip the checks for it.
+        // This can happen if we're restarting during a cluster incident. See
+        // T12966 for discussion.
+      }
     }
   }
 
@@ -374,6 +380,34 @@ final class PhabricatorMySQLSetupCheck extends PhabricatorSetupCheck {
             $host_name,
             php_uname('n'),
             new PhutilNumber($delta)));
+    }
+
+    $local_infile = $ref->loadRawMySQLConfigValue('local_infile');
+    if ($local_infile) {
+      $summary = pht(
+        'The MySQL "local_infile" option is enabled. This option is '.
+        'unsafe.');
+
+      $message = pht(
+        'Your MySQL server is configured with the "local_infile" option '.
+        'enabled. This option allows an attacker who finds an SQL injection '.
+        'hole to escalate their attack by copying files from the webserver '.
+        'into the database with "LOAD DATA LOCAL INFILE" queries, then '.
+        'reading the file content with "SELECT" queries.'.
+        "\n\n".
+        'You should disable this option in your %s file, in the %s section:'.
+        "\n\n".
+        '%s',
+        phutil_tag('tt', array(), 'my.cnf'),
+        phutil_tag('tt', array(), '[mysqld]'),
+        phutil_tag('pre', array(), 'local_infile=0'));
+
+      $this->newIssue('mysql.local_infile')
+        ->setName(pht('Unsafe MySQL "local_infile" Setting Enabled'))
+        ->setSummary($summary)
+        ->setMessage($message)
+        ->setDatabaseRef($ref)
+        ->addMySQLConfig('local_infile');
     }
 
   }

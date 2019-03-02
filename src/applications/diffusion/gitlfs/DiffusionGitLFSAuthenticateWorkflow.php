@@ -80,11 +80,11 @@ final class DiffusionGitLFSAuthenticateWorkflow
 
     $lfs_uri = $repository->getGitLFSURI('info/lfs');
 
-    // Generate a temporary token to allow the user to acces LFS over HTTP.
+    // Generate a temporary token to allow the user to access LFS over HTTP.
     // This works even if normal HTTP repository operations are not available
     // on this host, and does not require the user to have a VCS password.
 
-    $user = $this->getUser();
+    $user = $this->getSSHUser();
 
     $authorization = DiffusionGitLFSTemporaryTokenType::newHTTPAuthorization(
       $repository,

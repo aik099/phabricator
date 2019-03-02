@@ -23,12 +23,18 @@ final class PhabricatorRepositoryPushLog
   const CHANGEFLAG_APPEND = 4;
   const CHANGEFLAG_REWRITE = 8;
   const CHANGEFLAG_DANGEROUS = 16;
+  const CHANGEFLAG_ENORMOUS = 32;
+  const CHANGEFLAG_OVERSIZED = 64;
+  const CHANGEFLAG_TOUCHES = 128;
 
   const REJECT_ACCEPT = 0;
   const REJECT_DANGEROUS = 1;
   const REJECT_HERALD = 2;
   const REJECT_EXTERNAL = 3;
   const REJECT_BROKEN = 4;
+  const REJECT_ENORMOUS = 5;
+  const REJECT_OVERSIZED = 6;
+  const REJECT_TOUCHES = 7;
 
   protected $repositoryPHID;
   protected $epoch;
@@ -51,6 +57,32 @@ final class PhabricatorRepositoryPushLog
   public static function initializeNewLog(PhabricatorUser $viewer) {
     return id(new PhabricatorRepositoryPushLog())
       ->setPusherPHID($viewer->getPHID());
+  }
+
+  public static function getFlagDisplayNames() {
+    return array(
+      self::CHANGEFLAG_ADD => pht('Create'),
+      self::CHANGEFLAG_DELETE => pht('Delete'),
+      self::CHANGEFLAG_APPEND => pht('Append'),
+      self::CHANGEFLAG_REWRITE => pht('Rewrite'),
+      self::CHANGEFLAG_DANGEROUS => pht('Dangerous'),
+      self::CHANGEFLAG_ENORMOUS => pht('Enormous'),
+      self::CHANGEFLAG_OVERSIZED => pht('Oversized'),
+      self::CHANGEFLAG_TOUCHES => pht('Touches Too Many Paths'),
+    );
+  }
+
+  public static function getRejectCodeDisplayNames() {
+    return array(
+      self::REJECT_ACCEPT => pht('Accepted'),
+      self::REJECT_DANGEROUS => pht('Rejected: Dangerous'),
+      self::REJECT_HERALD => pht('Rejected: Herald'),
+      self::REJECT_EXTERNAL => pht('Rejected: External Hook'),
+      self::REJECT_BROKEN => pht('Rejected: Broken'),
+      self::REJECT_ENORMOUS => pht('Rejected: Enormous'),
+      self::REJECT_OVERSIZED => pht('Rejected: Oversized File'),
+      self::REJECT_TOUCHES => pht('Rejected: Touches Too Many Paths'),
+    );
   }
 
   public static function getHeraldChangeFlagConditionOptions() {
@@ -99,6 +131,9 @@ final class PhabricatorRepositoryPushLog
         ),
         'key_pusher' => array(
           'columns' => array('pusherPHID'),
+        ),
+        'key_epoch' => array(
+          'columns' => array('epoch'),
         ),
       ),
     ) + parent::getConfiguration();

@@ -26,9 +26,8 @@ final class DiffusionGitCommandEngine
 
     $env['HOME'] = PhabricatorEnv::getEmptyCWD();
 
-    if ($this->isAnySSHProtocol()) {
-      $env['GIT_SSH'] = $this->getSSHWrapper();
-    }
+    $env['GIT_SSH'] = $this->getSSHWrapper();
+    $env['GIT_SSH_VARIANT'] = 'ssh';
 
     if ($this->isAnyHTTPProtocol()) {
       $uri = $this->getURI();

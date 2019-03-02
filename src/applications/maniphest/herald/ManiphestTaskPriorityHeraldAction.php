@@ -39,12 +39,15 @@ final class ManiphestTaskPriorityHeraldAction
       return;
     }
 
+    $keyword_map = ManiphestTaskPriority::getTaskPriorityKeywordsMap();
+    $keyword = head(idx($keyword_map, $priority));
+
     $xaction = $adapter->newTransaction()
       ->setTransactionType(ManiphestTaskPriorityTransaction::TRANSACTIONTYPE)
-      ->setNewValue($priority);
+      ->setNewValue($keyword);
 
     $adapter->queueTransaction($xaction);
-    $this->logEffect(self::DO_PRIORITY, $priority);
+    $this->logEffect(self::DO_PRIORITY, $keyword);
   }
 
   public function getHeraldActionStandardType() {
@@ -58,7 +61,8 @@ final class ManiphestTaskPriorityHeraldAction
   }
 
   protected function getDatasource() {
-    return new ManiphestTaskPriorityDatasource();
+    return id(new ManiphestTaskPriorityDatasource())
+      ->setLimit(1);
   }
 
   protected function getDatasourceValueMap() {

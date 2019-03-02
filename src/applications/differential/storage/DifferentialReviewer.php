@@ -10,11 +10,16 @@ final class DifferentialReviewer
   protected $lastCommentDiffPHID;
   protected $lastActorPHID;
   protected $voidedPHID;
+  protected $options = array();
 
   private $authority = array();
+  private $changesets = self::ATTACHABLE;
 
   protected function getConfiguration() {
     return array(
+      self::CONFIG_SERIALIZATION => array(
+        'options' => self::SERIALIZATION_JSON,
+      ),
       self::CONFIG_COLUMN_SCHEMA => array(
         'reviewerStatus' => 'text64',
         'lastActionDiffPHID' => 'phid?',
@@ -54,9 +59,32 @@ final class DifferentialReviewer
     return $this->assertAttachedKey($this->authority, $cache_fragment);
   }
 
+  public function attachChangesets(array $changesets) {
+    $this->changesets = $changesets;
+    return $this;
+  }
+
+  public function getChangesets() {
+    return $this->assertAttached($this->changesets);
+  }
+
+  public function setOption($key, $value) {
+    $this->options[$key] = $value;
+    return $this;
+  }
+
+  public function getOption($key, $default = null) {
+    return idx($this->options, $key, $default);
+  }
+
   public function isResigned() {
     $status_resigned = DifferentialReviewerStatus::STATUS_RESIGNED;
     return ($this->getReviewerStatus() == $status_resigned);
+  }
+
+  public function isBlocking() {
+    $status_blocking = DifferentialReviewerStatus::STATUS_BLOCKING;
+    return ($this->getReviewerStatus() == $status_blocking);
   }
 
   public function isRejected($diff_phid) {

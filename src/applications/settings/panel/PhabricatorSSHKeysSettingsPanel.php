@@ -18,6 +18,10 @@ final class PhabricatorSSHKeysSettingsPanel extends PhabricatorSettingsPanel {
     return pht('SSH Public Keys');
   }
 
+  public function getPanelMenuIcon() {
+    return 'fa-file-text-o';
+  }
+
   public function getPanelGroupKey() {
     return PhabricatorSettingsAuthenticationPanelGroup::PANELGROUPKEY;
   }
@@ -45,13 +49,7 @@ final class PhabricatorSSHKeysSettingsPanel extends PhabricatorSettingsPanel {
       $viewer,
       $user);
 
-    $header->setHeader(pht('SSH Public Keys'));
-    $header->addActionLink($ssh_actions);
-
-    $panel->setHeader($header);
-    $panel->setTable($table);
-
-    return $panel;
+    return $this->newBox(pht('SSH Public Keys'), $table, array($ssh_actions));
   }
 
 }

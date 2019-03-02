@@ -163,14 +163,7 @@ final class PhabricatorPeopleQuery
   }
 
   protected function loadPage() {
-    $table = new PhabricatorUser();
-    $data = $this->loadStandardPageRows($table);
-
-    if ($this->needPrimaryEmail) {
-      $table->putInSet(new LiskDAOSet());
-    }
-
-    return $table->loadAllFromArray($data);
+    return $this->loadStandardPage($this->newResultObject());
   }
 
   protected function didFilterPage(array $users) {
@@ -268,7 +261,7 @@ final class PhabricatorPeopleQuery
           'user.username LIKE %>',
           $name_prefix);
       }
-      $where[] = '('.implode(' OR ', $parts).')';
+      $where[] = qsprintf($conn, '%LO', $parts);
     }
 
     if ($this->emails !== null) {
@@ -425,7 +418,7 @@ final class PhabricatorPeopleQuery
         }
 
         // If the user is set to "Available" for this event, don't consider it
-        // when computin their away status.
+        // when computing their away status.
         if (!$invitee->getDisplayAvailability($event)) {
           continue;
         }
@@ -492,7 +485,7 @@ final class PhabricatorPeopleQuery
         // valid for that long.
 
         // NOTE: This doesn't handle overlapping events with the greatest
-        // possible care. In theory, if you're attenting multiple events
+        // possible care. In theory, if you're attending multiple events
         // simultaneously we should accommodate that. However, it's complex
         // to compute, rare, and probably not confusing most of the time.
 

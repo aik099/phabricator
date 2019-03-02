@@ -57,7 +57,7 @@ final class DiffusionRepositoryPoliciesManagementPanel
   public function buildManagementPanelCurtain() {
     $repository = $this->getRepository();
     $viewer = $this->getViewer();
-    $action_list = $this->getNewActionList();
+    $action_list = $this->newActionList();
 
     $can_edit = PhabricatorPolicyFilter::hasCapability(
       $viewer,
@@ -68,14 +68,16 @@ final class DiffusionRepositoryPoliciesManagementPanel
 
     $action_list->addAction(
       id(new PhabricatorActionView())
-        ->setIcon('fa-pencil')
         ->setName(pht('Edit Policies'))
         ->setHref($edit_uri)
+        ->setIcon('fa-pencil')
         ->setDisabled(!$can_edit)
         ->setWorkflow(!$can_edit));
 
-    return $this->getNewCurtainView($action_list);
+    return $this->newCurtainView()
+      ->setActionList($action_list);
   }
+
 
   public function buildManagementPanelContent() {
     $repository = $this->getRepository();

@@ -161,7 +161,7 @@ abstract class PhabricatorAuthProvider extends Phobject {
   abstract public function processLoginRequest(
     PhabricatorAuthLoginController $controller);
 
-  public function buildLinkForm(PhabricatorAuthLinkController $controller) {
+  public function buildLinkForm($controller) {
     return $this->renderLoginForm($controller->getRequest(), $mode = 'link');
   }
 
@@ -220,9 +220,7 @@ abstract class PhabricatorAuthProvider extends Phobject {
       $adapter->getAdapterDomain(),
       $account_id);
     if (!$account) {
-      $account = id(new PhabricatorExternalAccount())
-        ->setAccountType($adapter->getAdapterType())
-        ->setAccountDomain($adapter->getAdapterDomain())
+      $account = $this->newExternalAccount()
         ->setAccountID($account_id);
     }
 
@@ -299,8 +297,18 @@ abstract class PhabricatorAuthProvider extends Phobject {
     return false;
   }
 
-  public function getDefaultExternalAccount() {
-    throw new PhutilMethodNotImplementedException();
+  public function newDefaultExternalAccount() {
+    return $this->newExternalAccount();
+  }
+
+  protected function newExternalAccount() {
+    $config = $this->getProviderConfig();
+    $adapter = $this->getAdapter();
+
+    return id(new PhabricatorExternalAccount())
+      ->setAccountType($adapter->getAdapterType())
+      ->setAccountDomain($adapter->getAdapterDomain())
+      ->setProviderConfigPHID($config->getPHID());
   }
 
   public function getLoginOrder() {
@@ -309,6 +317,12 @@ abstract class PhabricatorAuthProvider extends Phobject {
 
   protected function getLoginIcon() {
     return 'Generic';
+  }
+
+  public function newIconView() {
+    return id(new PHUIIconView())
+      ->setSpriteSheet(PHUIIconView::SPRITE_LOGIN)
+      ->setSpriteIcon($this->getLoginIcon());
   }
 
   public function isLoginFormAButton() {
@@ -389,7 +403,7 @@ abstract class PhabricatorAuthProvider extends Phobject {
    * @param   AphrontRequest  HTTP request.
    * @param   string          Request mode string.
    * @param   map             Additional parameters, see above.
-   * @return  wild            Login button.
+   * @return  wild            Log in button.
    */
   protected function renderStandardLoginButton(
     AphrontRequest $request,
@@ -414,9 +428,9 @@ abstract class PhabricatorAuthProvider extends Phobject {
     } else if ($mode == 'invite') {
       $button_text = pht('Register Account');
     } else if ($this->shouldAllowRegistration()) {
-      $button_text = pht('Login or Register');
+      $button_text = pht('Log In or Register');
     } else {
-      $button_text = pht('Login');
+      $button_text = pht('Log In');
     }
 
     $icon = id(new PHUIIconView())
@@ -432,12 +446,13 @@ abstract class PhabricatorAuthProvider extends Phobject {
 
     $uri = $attributes['uri'];
     $uri = new PhutilURI($uri);
-    $params = $uri->getQueryParams();
-    $uri->setQueryParams(array());
+    $params = $uri->getQueryParamsAsPairList();
+    $uri->removeAllQueryParams();
 
     $content = array($button);
 
-    foreach ($params as $key => $value) {
+    foreach ($params as $pair) {
+      list($key, $value) = $pair;
       $content[] = phutil_tag(
         'input',
         array(
@@ -445,6 +460,13 @@ abstract class PhabricatorAuthProvider extends Phobject {
           'name' => $key,
           'value' => $value,
         ));
+    }
+
+    $static_response = CelerityAPI::getStaticResourceResponse();
+    $static_response->addContentSecurityPolicyURI('form-action', (string)$uri);
+
+    foreach ($this->getContentSecurityPolicyFormActions() as $csp_uri) {
+      $static_response->addContentSecurityPolicyURI('form-action', $csp_uri);
     }
 
     return phabricator_form(
@@ -503,6 +525,10 @@ abstract class PhabricatorAuthProvider extends Phobject {
 
   public function getAutoLoginURI(AphrontRequest $request) {
     throw new PhutilMethodNotImplementedException();
+  }
+
+  protected function getContentSecurityPolicyFormActions() {
+    return array();
   }
 
 }

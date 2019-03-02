@@ -6,9 +6,7 @@ final class DifferentialTransaction
   private $isCommandeerSideEffect;
 
   const TYPE_INLINE  = 'differential:inline';
-  const TYPE_UPDATE  = 'differential:update';
   const TYPE_ACTION  = 'differential:action';
-  const TYPE_STATUS  = 'differential:status';
 
   const MAILTAG_REVIEWERS      = 'differential-reviewers';
   const MAILTAG_CLOSED         = 'differential-committed';
@@ -67,44 +65,34 @@ final class DifferentialTransaction
     return new DifferentialTransactionComment();
   }
 
-  public function getApplicationTransactionViewObject() {
-    return new DifferentialTransactionView();
-  }
-
   public function shouldHide() {
     $old = $this->getOldValue();
     $new = $this->getNewValue();
 
     switch ($this->getTransactionType()) {
-      case self::TYPE_UPDATE:
-        // Older versions of this transaction have an ID for the new value,
-        // and/or do not record the old value. Only hide the transaction if
-        // the new value is a PHID, indicating that this is a newer style
-        // transaction.
-        if ($old === null) {
-          if (phid_get_type($new) == DifferentialDiffPHIDType::TYPECONST) {
-            return true;
-          }
-        }
-        break;
-
-      case PhabricatorTransactions::TYPE_EDGE:
-        $add = array_diff_key($new, $old);
-        $rem = array_diff_key($old, $new);
-
-        // Hide metadata-only edge transactions. These correspond to users
-        // accepting or rejecting revisions, but the change is always explicit
-        // because of the TYPE_ACTION transaction. Rendering these transactions
-        // just creates clutter.
-
-        if (!$add && !$rem) {
-          return true;
-        }
-        break;
+      case DifferentialRevisionRequestReviewTransaction::TRANSACTIONTYPE:
+        // Don't hide the initial "X requested review: ..." transaction from
+        // mail or feed even when it occurs during creation. We need this
+        // transaction to survive so we'll generate mail and feed stories when
+        // revisions immediately leave the draft state. See T13035 for
+        // discussion.
+        return false;
     }
 
     return parent::shouldHide();
   }
+
+  public function shouldHideForMail(array $xactions) {
+    switch ($this->getTransactionType()) {
+      case DifferentialRevisionReviewersTransaction::TRANSACTIONTYPE:
+        // Don't hide the initial "X added reviewers: ..." transaction during
+        // object creation from mail. See T12118 and PHI54.
+        return false;
+    }
+
+    return parent::shouldHideForMail($xactions);
+  }
+
 
   public function isInlineCommentTransaction() {
     switch ($this->getTransactionType()) {
@@ -134,11 +122,6 @@ final class DifferentialTransaction
           }
         }
         break;
-      case self::TYPE_UPDATE:
-        if ($new) {
-          $phids[] = $new;
-        }
-        break;
     }
 
     return $phids;
@@ -148,8 +131,6 @@ final class DifferentialTransaction
     switch ($this->getTransactionType()) {
       case self::TYPE_ACTION:
         return 3;
-      case self::TYPE_UPDATE:
-        return 2;
     }
 
     return parent::getActionStrength();
@@ -160,13 +141,6 @@ final class DifferentialTransaction
     switch ($this->getTransactionType()) {
       case self::TYPE_INLINE:
         return pht('Commented On');
-      case self::TYPE_UPDATE:
-        $old = $this->getOldValue();
-        if ($old === null) {
-          return pht('Request');
-        } else {
-          return pht('Updated');
-        }
       case self::TYPE_ACTION:
         $map = array(
           DifferentialAction::ACTION_ACCEPT => pht('Accepted'),
@@ -204,7 +178,7 @@ final class DifferentialTransaction
             break;
         }
         break;
-      case self::TYPE_UPDATE:
+      case DifferentialRevisionUpdateTransaction::TRANSACTIONTYPE:
         $old = $this->getOldValue();
         if ($old === null) {
           $tags[] = self::MAILTAG_REVIEW_REQUEST;
@@ -243,28 +217,6 @@ final class DifferentialTransaction
         return pht(
           '%s added inline comments.',
           $author_handle);
-      case self::TYPE_UPDATE:
-        if ($this->getMetadataValue('isCommitUpdate')) {
-          return pht(
-            'This revision was automatically updated to reflect the '.
-            'committed changes.');
-        } else if ($new) {
-          // TODO: Migrate to PHIDs and use handles here?
-          if (phid_get_type($new) == DifferentialDiffPHIDType::TYPECONST) {
-            return pht(
-              '%s updated this revision to %s.',
-              $author_handle,
-              $this->renderHandleLink($new));
-          } else {
-            return pht(
-              '%s updated this revision.',
-              $author_handle);
-          }
-        } else {
-          return pht(
-            '%s updated this revision.',
-            $author_handle);
-        }
       case self::TYPE_ACTION:
         switch ($new) {
           case DifferentialAction::ACTION_CLOSE:
@@ -305,15 +257,6 @@ final class DifferentialTransaction
             return DifferentialAction::getBasicStoryText($new, $author_handle);
         }
         break;
-      case self::TYPE_STATUS:
-        switch ($this->getNewValue()) {
-          case ArcanistDifferentialRevisionStatus::ACCEPTED:
-            return pht('This revision is now accepted and ready to land.');
-          case ArcanistDifferentialRevisionStatus::NEEDS_REVISION:
-            return pht('This revision now requires changes to proceed.');
-          case ArcanistDifferentialRevisionStatus::NEEDS_REVIEW:
-            return pht('This revision now requires review to proceed.');
-        }
      }
 
     return parent::getTitle();
@@ -349,11 +292,6 @@ final class DifferentialTransaction
       case self::TYPE_INLINE:
         return pht(
           '%s added inline comments to %s.',
-          $author_link,
-          $object_link);
-      case self::TYPE_UPDATE:
-        return pht(
-          '%s updated the diff for %s.',
           $author_link,
           $object_link);
       case self::TYPE_ACTION:
@@ -457,21 +395,6 @@ final class DifferentialTransaction
               $object_link);
         }
         break;
-      case self::TYPE_STATUS:
-        switch ($this->getNewValue()) {
-          case ArcanistDifferentialRevisionStatus::ACCEPTED:
-            return pht(
-              '%s is now accepted and ready to land.',
-              $object_link);
-          case ArcanistDifferentialRevisionStatus::NEEDS_REVISION:
-            return pht(
-              '%s now requires changes to proceed.',
-              $object_link);
-          case ArcanistDifferentialRevisionStatus::NEEDS_REVIEW:
-            return pht(
-              '%s now requires review to proceed.',
-              $object_link);
-        }
      }
 
     return parent::getTitleForFeed();
@@ -481,18 +404,6 @@ final class DifferentialTransaction
     switch ($this->getTransactionType()) {
       case self::TYPE_INLINE:
         return 'fa-comment';
-      case self::TYPE_UPDATE:
-        return 'fa-refresh';
-      case self::TYPE_STATUS:
-        switch ($this->getNewValue()) {
-          case ArcanistDifferentialRevisionStatus::ACCEPTED:
-            return 'fa-check';
-          case ArcanistDifferentialRevisionStatus::NEEDS_REVISION:
-            return 'fa-times';
-          case ArcanistDifferentialRevisionStatus::NEEDS_REVIEW:
-            return 'fa-undo';
-        }
-        break;
       case self::TYPE_ACTION:
         switch ($this->getNewValue()) {
           case DifferentialAction::ACTION_CLOSE:
@@ -530,14 +441,12 @@ final class DifferentialTransaction
     // Never group status changes with other types of actions, they're indirect
     // and don't make sense when combined with direct actions.
 
-    $type_status = self::TYPE_STATUS;
-
-    if ($this->getTransactionType() == $type_status) {
+    if ($this->isStatusTransaction($this)) {
       return false;
     }
 
     foreach ($group as $xaction) {
-      if ($xaction->getTransactionType() == $type_status) {
+      if ($this->isStatusTransaction($xaction)) {
         return false;
       }
     }
@@ -545,21 +454,18 @@ final class DifferentialTransaction
     return parent::shouldDisplayGroupWith($group);
   }
 
+  private function isStatusTransaction($xaction) {
+    $status_type = DifferentialRevisionStatusTransaction::TRANSACTIONTYPE;
+    if ($xaction->getTransactionType() == $status_type) {
+      return true;
+    }
+
+    return false;
+  }
+
 
   public function getColor() {
     switch ($this->getTransactionType()) {
-      case self::TYPE_UPDATE:
-        return PhabricatorTransactions::COLOR_SKY;
-      case self::TYPE_STATUS:
-        switch ($this->getNewValue()) {
-          case ArcanistDifferentialRevisionStatus::ACCEPTED:
-            return PhabricatorTransactions::COLOR_GREEN;
-          case ArcanistDifferentialRevisionStatus::NEEDS_REVISION:
-            return PhabricatorTransactions::COLOR_RED;
-          case ArcanistDifferentialRevisionStatus::NEEDS_REVIEW:
-            return PhabricatorTransactions::COLOR_ORANGE;
-        }
-        break;
       case self::TYPE_ACTION:
         switch ($this->getNewValue()) {
           case DifferentialAction::ACTION_CLOSE:

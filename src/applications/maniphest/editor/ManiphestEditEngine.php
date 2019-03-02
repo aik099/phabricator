@@ -77,6 +77,8 @@ final class ManiphestEditEngine
     $status_map = $this->getTaskStatusMap($object);
     $priority_map = $this->getTaskPriorityMap($object);
 
+    $alias_map = ManiphestTaskPriority::getTaskPriorityAliasMap();
+
     if ($object->isClosed()) {
       $default_status = ManiphestTaskStatus::getDefaultStatus();
     } else {
@@ -176,6 +178,7 @@ EODOCS
       id(new PhabricatorTextEditField())
         ->setKey('title')
         ->setLabel(pht('Title'))
+        ->setBulkEditLabel(pht('Set title to'))
         ->setDescription(pht('Name of the task.'))
         ->setConduitDescription(pht('Rename the task.'))
         ->setConduitTypeDescription(pht('New task name.'))
@@ -186,18 +189,21 @@ EODOCS
         ->setKey('owner')
         ->setAliases(array('ownerPHID', 'assign', 'assigned'))
         ->setLabel(pht('Assigned To'))
+        ->setBulkEditLabel(pht('Assign to'))
         ->setDescription(pht('User who is responsible for the task.'))
         ->setConduitDescription(pht('Reassign the task.'))
         ->setConduitTypeDescription(
           pht('New task owner, or `null` to unassign.'))
         ->setTransactionType(ManiphestTaskOwnerTransaction::TRANSACTIONTYPE)
         ->setIsCopyable(true)
+        ->setIsNullable(true)
         ->setSingleValue($object->getOwnerPHID())
         ->setCommentActionLabel(pht('Assign / Claim'))
         ->setCommentActionValue($owner_value),
       id(new PhabricatorSelectEditField())
         ->setKey('status')
         ->setLabel(pht('Status'))
+        ->setBulkEditLabel(pht('Set status to'))
         ->setDescription(pht('Status of the task.'))
         ->setConduitDescription(pht('Change the task status.'))
         ->setConduitTypeDescription(pht('New task status constant.'))
@@ -210,13 +216,15 @@ EODOCS
       id(new PhabricatorSelectEditField())
         ->setKey('priority')
         ->setLabel(pht('Priority'))
+        ->setBulkEditLabel(pht('Set priority to'))
         ->setDescription(pht('Priority of the task.'))
         ->setConduitDescription(pht('Change the priority of the task.'))
         ->setConduitTypeDescription(pht('New task priority constant.'))
         ->setTransactionType(ManiphestTaskPriorityTransaction::TRANSACTIONTYPE)
         ->setIsCopyable(true)
-        ->setValue($object->getPriority())
+        ->setValue($object->getPriorityKeyword())
         ->setOptions($priority_map)
+        ->setOptionAliases($alias_map)
         ->setCommentActionLabel(pht('Change Priority')),
     );
 
@@ -227,6 +235,7 @@ EODOCS
       $fields[] = id(new PhabricatorPointsEditField())
         ->setKey('points')
         ->setLabel($points_label)
+        ->setBulkEditLabel($action_label)
         ->setDescription(pht('Point value of the task.'))
         ->setConduitDescription(pht('Change the task point value.'))
         ->setConduitTypeDescription(pht('New task point value.'))
@@ -239,6 +248,7 @@ EODOCS
     $fields[] = id(new PhabricatorRemarkupEditField())
       ->setKey('description')
       ->setLabel(pht('Description'))
+      ->setBulkEditLabel(pht('Set description to'))
       ->setDescription(pht('Task description.'))
       ->setConduitDescription(pht('Update the task description.'))
       ->setConduitTypeDescription(pht('New task description.'))
@@ -247,6 +257,56 @@ EODOCS
       ->setPreviewPanel(
         id(new PHUIRemarkupPreviewPanel())
           ->setHeader(pht('Description Preview')));
+
+    $parent_type = ManiphestTaskDependedOnByTaskEdgeType::EDGECONST;
+    $subtask_type = ManiphestTaskDependsOnTaskEdgeType::EDGECONST;
+
+    $src_phid = $object->getPHID();
+    if ($src_phid) {
+      $edge_query = id(new PhabricatorEdgeQuery())
+        ->withSourcePHIDs(array($src_phid))
+        ->withEdgeTypes(
+          array(
+            $parent_type,
+            $subtask_type,
+          ));
+      $edge_query->execute();
+
+      $parent_phids = $edge_query->getDestinationPHIDs(
+        array($src_phid),
+        array($parent_type));
+
+      $subtask_phids = $edge_query->getDestinationPHIDs(
+        array($src_phid),
+        array($subtask_type));
+    } else {
+      $parent_phids = array();
+      $subtask_phids = array();
+    }
+
+    $fields[] = id(new PhabricatorHandlesEditField())
+      ->setKey('parents')
+      ->setLabel(pht('Parents'))
+      ->setDescription(pht('Parent tasks.'))
+      ->setConduitDescription(pht('Change the parents of this task.'))
+      ->setConduitTypeDescription(pht('List of parent task PHIDs.'))
+      ->setUseEdgeTransactions(true)
+      ->setIsFormField(false)
+      ->setTransactionType(PhabricatorTransactions::TYPE_EDGE)
+      ->setMetadataValue('edge:type', $parent_type)
+      ->setValue($parent_phids);
+
+    $fields[] = id(new PhabricatorHandlesEditField())
+      ->setKey('subtasks')
+      ->setLabel(pht('Subtasks'))
+      ->setDescription(pht('Subtasks.'))
+      ->setConduitDescription(pht('Change the subtasks of this task.'))
+      ->setConduitTypeDescription(pht('List of subtask PHIDs.'))
+      ->setUseEdgeTransactions(true)
+      ->setIsFormField(false)
+      ->setTransactionType(PhabricatorTransactions::TYPE_EDGE)
+      ->setMetadataValue('edge:type', $subtask_type)
+      ->setValue($parent_phids);
 
     return $fields;
   }
@@ -289,29 +349,29 @@ EODOCS
 
   private function getTaskPriorityMap(ManiphestTask $task) {
     $priority_map = ManiphestTaskPriority::getTaskPriorityMap();
+    $priority_keywords = ManiphestTaskPriority::getTaskPriorityKeywordsMap();
     $current_priority = $task->getPriority();
+    $results = array();
+
+    foreach ($priority_map as $priority => $priority_name) {
+      $disabled = ManiphestTaskPriority::isDisabledPriority($priority);
+      if ($disabled && !($priority == $current_priority)) {
+        continue;
+      }
+
+      $keyword = head(idx($priority_keywords, $priority));
+      $results[$keyword] = $priority_name;
+    }
 
     // If the current value isn't a legitimate one, put it in the dropdown
-    // anyway so saving the form doesn't cause a side effects.
+    // anyway so saving the form doesn't cause any side effects.
     if (idx($priority_map, $current_priority) === null) {
-      $priority_map[$current_priority] = pht(
+      $results[ManiphestTaskPriority::UNKNOWN_PRIORITY_KEYWORD] = pht(
         '<Unknown: %s>',
         $current_priority);
     }
 
-    foreach ($priority_map as $priority => $priority_name) {
-      // Always keep the current priority.
-      if ($priority == $current_priority) {
-        continue;
-      }
-
-      if (ManiphestTaskPriority::isDisabledPriority($priority)) {
-        unset($priority_map[$priority]);
-        continue;
-      }
-    }
-
-    return $priority_map;
+    return $results;
   }
 
   protected function newEditResponse(

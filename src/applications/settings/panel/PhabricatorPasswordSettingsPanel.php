@@ -10,6 +10,10 @@ final class PhabricatorPasswordSettingsPanel extends PhabricatorSettingsPanel {
     return pht('Password');
   }
 
+  public function getPanelMenuIcon() {
+    return 'fa-key';
+  }
+
   public function getPanelGroupKey() {
     return PhabricatorSettingsAuthenticationPanelGroup::PANELGROUPKEY;
   }
@@ -25,119 +29,124 @@ final class PhabricatorPasswordSettingsPanel extends PhabricatorSettingsPanel {
   }
 
   public function processRequest(AphrontRequest $request) {
-    $user = $request->getUser();
+    $viewer = $request->getUser();
+    $user = $this->getUser();
 
-    $token = id(new PhabricatorAuthSessionEngine())->requireHighSecuritySession(
-      $user,
-      $request,
-      '/settings/');
+    $content_source = PhabricatorContentSource::newFromRequest($request);
 
     $min_len = PhabricatorEnv::getEnvConfig('account.minimum-password-length');
     $min_len = (int)$min_len;
 
-    // NOTE: To change your password, you need to prove you own the account,
-    // either by providing the old password or by carrying a token to
-    // the workflow from a password reset email.
+    // NOTE: Users can also change passwords through the separate "set/reset"
+    // interface which is reached by logging in with a one-time token after
+    // registration or password reset. If this flow changes, that flow may
+    // also need to change.
 
-    $key = $request->getStr('key');
-    $password_type = PhabricatorAuthPasswordResetTemporaryTokenType::TOKENTYPE;
+    $account_type = PhabricatorAuthPassword::PASSWORD_TYPE_ACCOUNT;
 
-    $token = null;
-    if ($key) {
-      $token = id(new PhabricatorAuthTemporaryTokenQuery())
-        ->setViewer($user)
-        ->withTokenResources(array($user->getPHID()))
-        ->withTokenTypes(array($password_type))
-        ->withTokenCodes(array(PhabricatorHash::weakDigest($key)))
-        ->withExpired(false)
-        ->executeOne();
+    $password_objects = id(new PhabricatorAuthPasswordQuery())
+      ->setViewer($viewer)
+      ->withObjectPHIDs(array($user->getPHID()))
+      ->withPasswordTypes(array($account_type))
+      ->withIsRevoked(false)
+      ->execute();
+    if (!$password_objects) {
+      return $this->newSetPasswordView($request);
     }
+    $password_object = head($password_objects);
 
     $e_old = true;
     $e_new = true;
     $e_conf = true;
 
     $errors = array();
-    if ($request->isFormPost()) {
-      if (!$token) {
-        $envelope = new PhutilOpaqueEnvelope($request->getStr('old_pw'));
-        if (!$user->comparePassword($envelope)) {
-          $errors[] = pht('The old password you entered is incorrect.');
-          $e_old = pht('Invalid');
-        }
+    if ($request->isFormOrHisecPost()) {
+      $workflow_key = sprintf(
+        'password.change(%s)',
+        $user->getPHID());
+
+      $hisec_token = id(new PhabricatorAuthSessionEngine())
+        ->setWorkflowKey($workflow_key)
+        ->requireHighSecurityToken($viewer, $request, '/settings/');
+
+      // Rate limit guesses about the old password. This page requires MFA and
+      // session compromise already, so this is mostly just to stop researchers
+      // from reporting this as a vulnerability.
+      PhabricatorSystemActionEngine::willTakeAction(
+        array($viewer->getPHID()),
+        new PhabricatorAuthChangePasswordAction(),
+        1);
+
+      $envelope = new PhutilOpaqueEnvelope($request->getStr('old_pw'));
+
+      $engine = id(new PhabricatorAuthPasswordEngine())
+        ->setViewer($viewer)
+        ->setContentSource($content_source)
+        ->setPasswordType($account_type)
+        ->setObject($user);
+
+      if (!strlen($envelope->openEnvelope())) {
+        $errors[] = pht('You must enter your current password.');
+        $e_old = pht('Required');
+      } else if (!$engine->isValidPassword($envelope)) {
+        $errors[] = pht('The old password you entered is incorrect.');
+        $e_old = pht('Invalid');
+      } else {
+        $e_old = null;
+
+        // Refund the user an action credit for getting the password right.
+        PhabricatorSystemActionEngine::willTakeAction(
+          array($viewer->getPHID()),
+          new PhabricatorAuthChangePasswordAction(),
+          -1);
       }
 
       $pass = $request->getStr('new_pw');
       $conf = $request->getStr('conf_pw');
+      $password_envelope = new PhutilOpaqueEnvelope($pass);
+      $confirm_envelope = new PhutilOpaqueEnvelope($conf);
 
-      if (strlen($pass) < $min_len) {
-        $errors[] = pht('Your new password is too short.');
-        $e_new = pht('Too Short');
-      } else if ($pass !== $conf) {
-        $errors[] = pht('New password and confirmation do not match.');
-        $e_conf = pht('Invalid');
-      } else if (PhabricatorCommonPasswords::isCommonPassword($pass)) {
-        $e_new = pht('Very Weak');
-        $e_conf = pht('Very Weak');
-        $errors[] = pht(
-          'Your new password is very weak: it is one of the most common '.
-          'passwords in use. Choose a stronger password.');
+      try {
+        $engine->checkNewPassword($password_envelope, $confirm_envelope);
+        $e_new = null;
+        $e_conf = null;
+      } catch (PhabricatorAuthPasswordException $ex) {
+        $errors[] = $ex->getMessage();
+        $e_new = $ex->getPasswordError();
+        $e_conf = $ex->getConfirmError();
       }
 
       if (!$errors) {
-        // This write is unguarded because the CSRF token has already
-        // been checked in the call to $request->isFormPost() and
-        // the CSRF token depends on the password hash, so when it
-        // is changed here the CSRF token check will fail.
-        $unguarded = AphrontWriteGuard::beginScopedUnguardedWrites();
+        $password_object
+          ->setPassword($password_envelope, $user)
+          ->save();
 
-          $envelope = new PhutilOpaqueEnvelope($pass);
-          id(new PhabricatorUserEditor())
-            ->setActor($user)
-            ->changePassword($user, $envelope);
-
-        unset($unguarded);
-
-        if ($token) {
-          // Destroy the token.
-          $token->delete();
-
-          // If this is a password set/reset, kick the user to the home page
-          // after we update their account.
-          $next = '/';
-        } else {
-          $next = $this->getPanelURI('?saved=true');
-        }
+        $next = $this->getPanelURI('?saved=true');
 
         id(new PhabricatorAuthSessionEngine())->terminateLoginSessions(
           $user,
-          $request->getCookie(PhabricatorCookies::COOKIE_SESSION));
+          new PhutilOpaqueEnvelope(
+            $request->getCookie(PhabricatorCookies::COOKIE_SESSION)));
 
         return id(new AphrontRedirectResponse())->setURI($next);
       }
     }
 
-    $hash_envelope = new PhutilOpaqueEnvelope($user->getPasswordHash());
-    if (strlen($hash_envelope->openEnvelope())) {
+    if ($password_object->getID()) {
       try {
-        $can_upgrade = PhabricatorPasswordHasher::canUpgradeHash(
-          $hash_envelope);
+        $can_upgrade = $password_object->canUpgrade();
       } catch (PhabricatorPasswordHasherUnavailableException $ex) {
         $can_upgrade = false;
 
-        // Only show this stuff if we aren't on the reset workflow. We can
-        // do resets regardless of the old hasher's availability.
-        if (!$token) {
-          $errors[] = pht(
-            'Your password is currently hashed using an algorithm which is '.
-            'no longer available on this install.');
-          $errors[] = pht(
-            'Because the algorithm implementation is missing, your password '.
-            'can not be used or updated.');
-          $errors[] = pht(
-            'To set a new password, request a password reset link from the '.
-            'login screen and then follow the instructions.');
-        }
+        $errors[] = pht(
+          'Your password is currently hashed using an algorithm which is '.
+          'no longer available on this install.');
+        $errors[] = pht(
+          'Because the algorithm implementation is missing, your password '.
+          'can not be used or updated.');
+        $errors[] = pht(
+          'To set a new password, request a password reset link from the '.
+          'login screen and then follow the instructions.');
       }
 
       if ($can_upgrade) {
@@ -153,64 +162,82 @@ final class PhabricatorPasswordSettingsPanel extends PhabricatorSettingsPanel {
       $len_caption = pht('Minimum password length: %d characters.', $min_len);
     }
 
-    $form = new AphrontFormView();
-    $form
-      ->setUser($user)
-      ->addHiddenInput('key', $key);
-
-    if (!$token) {
-      $form->appendChild(
+    $form = id(new AphrontFormView())
+      ->setViewer($viewer)
+      ->appendChild(
         id(new AphrontFormPasswordControl())
           ->setLabel(pht('Old Password'))
           ->setError($e_old)
-          ->setName('old_pw'));
-    }
-
-    $form
+          ->setName('old_pw'))
       ->appendChild(
         id(new AphrontFormPasswordControl())
           ->setDisableAutocomplete(true)
           ->setLabel(pht('New Password'))
           ->setError($e_new)
-          ->setName('new_pw'));
-    $form
+          ->setName('new_pw'))
       ->appendChild(
         id(new AphrontFormPasswordControl())
           ->setDisableAutocomplete(true)
           ->setLabel(pht('Confirm Password'))
           ->setCaption($len_caption)
           ->setError($e_conf)
-          ->setName('conf_pw'));
-    $form
+          ->setName('conf_pw'))
       ->appendChild(
         id(new AphrontFormSubmitControl())
           ->setValue(pht('Change Password')));
 
-    $form->appendChild(
-      id(new AphrontFormStaticControl())
-        ->setLabel(pht('Current Algorithm'))
-        ->setValue(PhabricatorPasswordHasher::getCurrentAlgorithmName(
-          new PhutilOpaqueEnvelope($user->getPasswordHash()))));
+    $properties = id(new PHUIPropertyListView());
 
-    $form->appendChild(
-      id(new AphrontFormStaticControl())
-        ->setLabel(pht('Best Available Algorithm'))
-        ->setValue(PhabricatorPasswordHasher::getBestAlgorithmName()));
+    $properties->addProperty(
+      pht('Current Algorithm'),
+      PhabricatorPasswordHasher::getCurrentAlgorithmName(
+        $password_object->newPasswordEnvelope()));
 
-    $form->appendRemarkupInstructions(
-      pht(
-        'NOTE: Changing your password will terminate any other outstanding '.
-        'login sessions.'));
+    $properties->addProperty(
+      pht('Best Available Algorithm'),
+      PhabricatorPasswordHasher::getBestAlgorithmName());
 
+    $info_view = id(new PHUIInfoView())
+      ->setSeverity(PHUIInfoView::SEVERITY_NOTICE)
+      ->appendChild(
+        pht('Changing your password will terminate any other outstanding '.
+            'login sessions.'));
+
+    $algo_box = $this->newBox(pht('Password Algorithms'), $properties);
     $form_box = id(new PHUIObjectBoxView())
       ->setHeaderText(pht('Change Password'))
       ->setFormSaved($request->getStr('saved'))
       ->setFormErrors($errors)
+      ->setBackground(PHUIObjectBoxView::WHITE_CONFIG)
       ->setForm($form);
 
     return array(
       $form_box,
+      $algo_box,
+      $info_view,
     );
+  }
+
+  private function newSetPasswordView(AphrontRequest $request) {
+    $viewer = $request->getUser();
+    $user = $this->getUser();
+
+    $form = id(new AphrontFormView())
+      ->setViewer($viewer)
+      ->appendRemarkupInstructions(
+        pht(
+          'Your account does not currently have a password set. You can '.
+          'choose a password by performing a password reset.'))
+      ->appendControl(
+        id(new AphrontFormSubmitControl())
+          ->addCancelButton('/login/email/', pht('Reset Password')));
+
+    $form_box = id(new PHUIObjectBoxView())
+      ->setHeaderText(pht('Set Password'))
+      ->setBackground(PHUIObjectBoxView::WHITE_CONFIG)
+      ->setForm($form);
+
+    return $form_box;
   }
 
 

@@ -71,7 +71,7 @@ final class DifferentialDiffCreateController extends DifferentialController {
           $uri = $this->getApplicationURI("diff/{$diff_id}/");
           $uri = new PhutilURI($uri);
           if ($revision) {
-            $uri->setQueryParam('revisionID', $revision->getID());
+            $uri->replaceQueryParam('revisionID', $revision->getID());
           }
 
           return id(new AphrontRedirectResponse())->setURI($uri);
@@ -112,7 +112,7 @@ final class DifferentialDiffCreateController extends DifferentialController {
               $arcanist_link,
             ),
             pht(
-              'You can also paste a diff below, or upload a file '.
+              'You can also paste a diff above, or upload a file '.
               'containing a diff (for example, from %s, %s or %s).',
               phutil_tag('tt', array(), 'svn diff'),
               phutil_tag('tt', array(), 'git diff'),
@@ -182,10 +182,10 @@ final class DifferentialDiffCreateController extends DifferentialController {
           ->setValue($button));
 
     $form_box = id(new PHUIObjectBoxView())
-      ->setHeaderText(pht('Diff'))
+      ->setHeaderText($title)
       ->setValidationException($validation_exception)
       ->setForm($form)
-      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
+      ->setBackground(PHUIObjectBoxView::WHITE_CONFIG)
       ->setFormErrors($errors);
 
     $crumbs = $this->buildApplicationCrumbs();
@@ -197,15 +197,10 @@ final class DifferentialDiffCreateController extends DifferentialController {
     $crumbs->addTextCrumb($title);
     $crumbs->setBorder(true);
 
-    $header = id(new PHUIHeaderView())
-      ->setHeader($title)
-      ->setHeaderIcon($header_icon);
-
     $view = id(new PHUITwoColumnView())
-      ->setHeader($header)
       ->setFooter(array(
-        $info_view,
         $form_box,
+        $info_view,
       ));
 
     return $this->newPage()

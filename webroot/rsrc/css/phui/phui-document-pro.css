@@ -4,12 +4,57 @@
 
 .phui-document-view.phui-document-view-pro {
   max-width: 800px;
-  padding: 16px 16px 64px 16px;
+  padding: 16px 16px 32px 16px;
   margin: 0 auto;
 }
 
+.phui-document-view.phui-document-view-pro.has-curtain {
+  max-width: 1132px;
+}
+
+.printable .phui-document-view.phui-document-view-pro.has-curtain {
+  max-width: none;
+}
+
+.device-desktop .phui-document-inner {
+  overflow: hidden;
+}
+
+.device-desktop .has-curtain .phui-document-content-view {
+  display: table-cell;
+}
+
+.printable .phui-document-content-view {
+  padding-right: 0;
+}
+
+.device-desktop .phui-document-content-outer {
+  display: table;
+  width: 100%;
+  layout: fixed;
+}
+
+/* Force very wide content, like tables with many columns, to scroll inside
+   the frame. See T13202. */
+.phui-document-content-view {
+  max-width: 800px;
+}
+
+.device-desktop .phui-document-content-inner {
+  display: table-row;
+}
+
+.device-desktop .phui-document-curtain {
+  display: table-cell;
+  width: 300px;
+}
+
+.printable .phui-document-curtain {
+  display: none;
+}
+
 .phui-document-container {
-  background-color: #fff;
+  background-color: {$page.content};
   position: relative;
   border-bottom: 1px solid #dedee1;
 }
@@ -64,19 +109,11 @@ body.printable {
 .phui-document-view-pro .phui-document-toc {
   position: absolute;
   top: 34px;
-  left: -36px;
+  left: -44px;
 }
 
 .printable .phui-document-view-pro a.phui-document-toc {
   display: none;
-}
-
-a.button.phui-document-toc {
-  display: inline-block;
-  height: 16px;
-  width: 20px;
-  padding-left: 8px;
-  padding-right: 8px;
 }
 
 .phui-document-view-pro .phui-document-toc-list {
@@ -87,7 +124,7 @@ a.button.phui-document-toc {
   width: 260px;
   position: absolute;
   z-index: 30;
-  background-color: #fff;
+  background-color: {$page.content};
   top: 52px;
   left: -40px;
 }
@@ -105,12 +142,7 @@ a.button.phui-document-toc {
 }
 
 .phui-document-toc-open .phui-document-toc {
-  background-color: {$blue};
-  border-color: {$blue};
-}
-
-.phui-document-toc-open .phui-document-toc .phui-icon-view {
-  color: #fff;
+  border-color: {$blueborder};
 }
 
 .phui-document-view-pro .phui-document-toc-content {
@@ -176,7 +208,7 @@ a.button.phui-document-toc {
   .phui-header-header {
   font-size: 24px;
   line-height: 30px;
-  color: #000;
+  color: {$blacktext};
 }
 
 .device-phone .phui-document-view.phui-document-view-pro .phui-header-tall
@@ -215,10 +247,13 @@ a.button.phui-document-toc {
   }
 }
 
+.phui-document-view-pro-box {
+  margin-bottom: 24px;
+}
+
 .phui-document-view-pro-box .phui-timeline-view {
   padding: 16px 0 0 0;
   background: none;
-  border-top: 1px solid rgba({$alphablue}, 0.20);
 }
 
 .phui-document-view-pro-box .phui-timeline-wedge {
@@ -241,7 +276,7 @@ a.button.phui-document-toc {
 .phui-document-view-pro-box .phui-timeline-title {
   border-top-right-radius: 3px;
   border-top-left-radius: 3px;
-  background-color: #fff;
+  background-color: {$page.content};
   border-bottom: 1px solid #F1F1F4;
 }
 

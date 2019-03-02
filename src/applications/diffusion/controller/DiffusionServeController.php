@@ -104,15 +104,29 @@ final class DiffusionServeController extends DiffusionController {
     try {
       $remote_addr = $request->getRemoteAddress();
 
+      if ($request->isHTTPS()) {
+        $remote_protocol = PhabricatorRepositoryPullEvent::PROTOCOL_HTTPS;
+      } else {
+        $remote_protocol = PhabricatorRepositoryPullEvent::PROTOCOL_HTTP;
+      }
+
       $pull_event = id(new PhabricatorRepositoryPullEvent())
         ->setEpoch(PhabricatorTime::getNow())
         ->setRemoteAddress($remote_addr)
-        ->setRemoteProtocol('http');
+        ->setRemoteProtocol($remote_protocol);
 
       if ($response) {
-        $pull_event
-          ->setResultType('wild')
-          ->setResultCode($response->getHTTPResponseCode());
+        $response_code = $response->getHTTPResponseCode();
+
+        if ($response_code == 200) {
+          $pull_event
+            ->setResultType(PhabricatorRepositoryPullEvent::RESULT_PULL)
+            ->setResultCode($response_code);
+        } else {
+          $pull_event
+            ->setResultType(PhabricatorRepositoryPullEvent::RESULT_ERROR)
+            ->setResultCode($response_code);
+        }
 
         if ($response instanceof PhabricatorVCSResponse) {
           $pull_event->setProperties(
@@ -122,7 +136,7 @@ final class DiffusionServeController extends DiffusionController {
         }
       } else {
         $pull_event
-          ->setResultType('exception')
+          ->setResultType(PhabricatorRepositoryPullEvent::RESULT_EXCEPTION)
           ->setResultCode(500)
           ->setProperties(
             array(
@@ -417,10 +431,13 @@ final class DiffusionServeController extends DiffusionController {
 
     $uri = $repository->getAlmanacServiceURI(
       $viewer,
-      $is_cluster_request,
       array(
-        'http',
-        'https',
+        'neverProxy' => $is_cluster_request,
+        'protocols' => array(
+          'http',
+          'https',
+        ),
+        'writable' => !$this->isReadOnlyRequest($repository),
       ));
     if ($uri) {
       $future = $this->getRequest()->newClusterProxyFuture($uri);
@@ -511,7 +528,7 @@ final class DiffusionServeController extends DiffusionController {
         unset($query_data[$key]);
       }
     }
-    $query_string = http_build_query($query_data, '', '&');
+    $query_string = phutil_build_http_querystring($query_data);
 
     // We're about to wipe out PATH with the rest of the environment, so
     // resolve the binary first.
@@ -715,28 +732,17 @@ final class DiffusionServeController extends DiffusionController {
       return null;
     }
 
-    $password_entry = id(new PhabricatorRepositoryVCSPassword())
-      ->loadOneWhere('userPHID = %s', $user->getPHID());
-    if (!$password_entry) {
-      // User doesn't have a password set.
+    $request = $this->getRequest();
+    $content_source = PhabricatorContentSource::newFromRequest($request);
+
+    $engine = id(new PhabricatorAuthPasswordEngine())
+      ->setViewer($user)
+      ->setContentSource($content_source)
+      ->setPasswordType(PhabricatorAuthPassword::PASSWORD_TYPE_VCS)
+      ->setObject($user);
+
+    if (!$engine->isValidPassword($password)) {
       return null;
-    }
-
-    if (!$password_entry->comparePassword($password, $user)) {
-      // Password doesn't match.
-      return null;
-    }
-
-    // If the user's password is stored using a less-than-optimal hash, upgrade
-    // them to the strongest available hash.
-
-    $hash_envelope = new PhutilOpaqueEnvelope(
-      $password_entry->getPasswordHash());
-    if (PhabricatorPasswordHasher::canUpgradeHash($hash_envelope)) {
-      $password_entry->setPassword($password, $user);
-      $unguarded = AphrontWriteGuard::beginScopedUnguardedWrites();
-        $password_entry->save();
-      unset($unguarded);
     }
 
     return $user;
@@ -768,7 +774,10 @@ final class DiffusionServeController extends DiffusionController {
       $input = strlen($input)."\n".$input."0\n";
     }
 
-    $command = csprintf('%s serve --stdio', $bin);
+    $command = csprintf(
+      '%s -R %s serve --stdio',
+      $bin,
+      $repository->getLocalPath());
     $command = PhabricatorDaemon::sudoCommandAsDaemonUser($command);
 
     list($err, $stdout, $stderr) = id(new ExecFuture('%C', $command))
@@ -1040,7 +1049,7 @@ final class DiffusionServeController extends DiffusionController {
           // <https://github.com/github/git-lfs/issues/1088>
           $no_authorization = 'Basic '.base64_encode('none');
 
-          $get_uri = $file->getCDNURI();
+          $get_uri = $file->getCDNURI('data');
           $actions['download'] = array(
             'href' => $get_uri,
             'header' => array(

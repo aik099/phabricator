@@ -41,7 +41,7 @@ final class PhabricatorPasteEditor
   }
 
   protected function getMailSubjectPrefix() {
-    return PhabricatorEnv::getEnvConfig('metamta.paste.subject-prefix');
+    return pht('[Paste]');
   }
 
   protected function getMailTo(PhabricatorLiskDAO $object) {
@@ -72,8 +72,7 @@ final class PhabricatorPasteEditor
     $name = $object->getTitle();
 
     return id(new PhabricatorMetaMTAMail())
-      ->setSubject("P{$id}: {$name}")
-      ->addHeader('Thread-Topic', "P{$id}");
+      ->setSubject("P{$id}: {$name}");
   }
 
   protected function buildMailBody(

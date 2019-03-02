@@ -107,6 +107,19 @@ final class PHUIDiffInlineCommentDetailView
         break;
     }
 
+    $is_draft_done = false;
+    switch ($inline->getFixedState()) {
+      case PhabricatorInlineCommentInterface::STATE_DRAFT:
+      case PhabricatorInlineCommentInterface::STATE_UNDRAFT:
+        $is_draft_done = true;
+        break;
+    }
+
+    $is_synthetic = false;
+    if ($inline->getSyntheticAuthor()) {
+      $is_synthetic = true;
+    }
+
     $metadata = array(
       'id' => $inline->getID(),
       'phid' => $inline->getPHID(),
@@ -120,6 +133,8 @@ final class PHUIDiffInlineCommentDetailView
       'isDraft' => $inline->isDraft(),
       'isFixed' => $is_fixed,
       'isGhost' => $inline->getIsGhost(),
+      'isSynthetic' => $is_synthetic,
+      'isDraftDone' => $is_draft_done,
     );
 
     $sigil = 'differential-inline-comment';
@@ -135,11 +150,6 @@ final class PHUIDiffInlineCommentDetailView
     $handles = $this->handles;
 
     $links = array();
-
-    $is_synthetic = false;
-    if ($inline->getSyntheticAuthor()) {
-      $is_synthetic = true;
-    }
 
     $draft_text = null;
     if (!$is_synthetic) {
@@ -223,7 +233,8 @@ final class PHUIDiffInlineCommentDetailView
         ->setIcon('fa-reply')
         ->setTooltip(pht('Reply'))
         ->addSigil('differential-inline-reply')
-        ->setMustCapture(true);
+        ->setMustCapture(true)
+        ->setAuralLabel(pht('Reply'));
     }
 
     if ($this->editable && !$this->preview) {
@@ -232,14 +243,16 @@ final class PHUIDiffInlineCommentDetailView
         ->setIcon('fa-pencil')
         ->setTooltip(pht('Edit'))
         ->addSigil('differential-inline-edit')
-        ->setMustCapture(true);
+        ->setMustCapture(true)
+        ->setAuralLabel(pht('Edit'));
 
       $action_buttons[] = id(new PHUIButtonView())
         ->setTag('a')
         ->setIcon('fa-trash-o')
         ->setTooltip(pht('Delete'))
         ->addSigil('differential-inline-delete')
-        ->setMustCapture(true);
+        ->setMustCapture(true)
+        ->setAuralLabel(pht('Delete'));
 
     } else if ($this->preview) {
       $links[] = javelin_tag(
@@ -258,29 +271,40 @@ final class PHUIDiffInlineCommentDetailView
         ->setTooltip(pht('Delete'))
         ->setIcon('fa-trash-o')
         ->addSigil('differential-inline-delete')
-        ->setMustCapture(true);
+        ->setMustCapture(true)
+        ->setAuralLabel(pht('Delete'));
     }
 
     if (!$this->preview && $this->canHide()) {
       $action_buttons[] = id(new PHUIButtonView())
         ->setTag('a')
-        ->setTooltip(pht('Hide Comment'))
+        ->setTooltip(pht('Collapse'))
         ->setIcon('fa-times')
         ->addSigil('hide-inline')
-        ->setMustCapture(true);
+        ->setMustCapture(true)
+        ->setAuralLabel(pht('Collapse'));
     }
 
     $done_button = null;
+
+    $mark_done = $this->getCanMarkDone();
+
+    // Allow users to mark their own draft inlines as "Done".
+    if ($viewer_phid == $inline->getAuthorPHID()) {
+      if ($inline->isDraft()) {
+        $mark_done = true;
+      }
+    }
 
     if (!$is_synthetic) {
       $draft_state = false;
       switch ($inline->getFixedState()) {
         case PhabricatorInlineCommentInterface::STATE_DRAFT:
-          $is_done = ($this->getCanMarkDone());
+          $is_done = $mark_done;
           $draft_state = true;
           break;
         case PhabricatorInlineCommentInterface::STATE_UNDRAFT:
-          $is_done = !($this->getCanMarkDone());
+          $is_done = !$mark_done;
           $draft_state = true;
           break;
         case PhabricatorInlineCommentInterface::STATE_DONE:
@@ -294,7 +318,7 @@ final class PHUIDiffInlineCommentDetailView
 
       // If you don't have permission to mark the comment as "Done", you also
       // can not see the draft state.
-      if (!$this->getCanMarkDone()) {
+      if (!$mark_done) {
         $draft_state = false;
       }
 
@@ -306,21 +330,19 @@ final class PHUIDiffInlineCommentDetailView
         $classes[] = 'inline-state-is-draft';
       }
 
-      if ($this->getCanMarkDone()) {
+      if ($mark_done && !$this->preview) {
         $done_input = javelin_tag(
           'input',
           array(
             'type' => 'checkbox',
             'checked' => ($is_done ? 'checked' : null),
-            'disabled' => ($this->getCanMarkDone() ? null : 'disabled'),
             'class' => 'differential-inline-done',
             'sigil' => 'differential-inline-done',
           ));
         $done_button = phutil_tag(
           'label',
           array(
-            'class' => 'differential-inline-done-label '.
-                        ($this->getCanMarkDone() ? null : 'done-is-disabled'),
+            'class' => 'differential-inline-done-label ',
           ),
           array(
             $done_input,

@@ -100,6 +100,20 @@ final class AphrontFormCheckboxControl extends AphrontFormControl {
     return 'aphront-form-control-checkbox';
   }
 
+  public function setOptions(array $options) {
+    $boxes = array();
+    foreach ($options as $key => $value) {
+      $boxes[] = array(
+        'value' => $key,
+        'label' => $value,
+      );
+    }
+
+    $this->boxes = $boxes;
+
+    return $this;
+  }
+
   protected function renderInput() {
     $rows = array();
     $combined_value = $this->getValue();
@@ -110,23 +124,35 @@ final class AphrontFormCheckboxControl extends AphrontFormControl {
         $id = celerity_generate_unique_node_id();
       }
 
-      $checkbox_name = $box['name'];
-      $checkbox_value = (string)$box['value'];
+      if (idx($box, 'name') !== null) {
+        // Alex version.
+        $checkbox_name = $box['name'];
+        $checkbox_value = (string)$box['value'];
 
-      $is_checked = $box['checked'];
+        $is_checked = $box['checked'];
 
-      if ($this->isMultiple($checkbox_name)) {
-        if (isset($combined_value[$checkbox_name])) {
-          $is_checked = in_array(
-            $checkbox_value,
-            $combined_value[$checkbox_name],
-            true
-          );
+        if ($this->isMultiple($checkbox_name)) {
+          if (isset($combined_value[$checkbox_name])) {
+            $is_checked = in_array(
+              $checkbox_value,
+              $combined_value[$checkbox_name],
+              true
+            );
+          }
+        } else {
+          if (isset($combined_value[$checkbox_name])) {
+            $is_checked =
+              (string)$combined_value[$checkbox_name] === $checkbox_value;
+          }
         }
       } else {
-        if (isset($combined_value[$checkbox_name])) {
-          $is_checked =
-            (string)$combined_value[$checkbox_name] === $checkbox_value;
+        // Evan version.
+        $checkbox_name = $this->getName().'[]';
+
+        if (array_key_exists('checked', $box)) {
+          $is_checked = $box['checked'];
+        } else {
+          $is_checked = in_array($box['value'], $this->getValue());
         }
       }
 

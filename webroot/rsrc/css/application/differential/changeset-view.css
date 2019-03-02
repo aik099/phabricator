@@ -20,7 +20,7 @@
 }
 
 .differential-diff {
-  background: #fff;
+  background: {$diff.background};
   width: 100%;
   border-top: 1px solid {$lightblueborder};
   border-bottom: 1px solid {$lightblueborder};
@@ -67,28 +67,6 @@
   padding: 1px 4px;
 }
 
-.differential-diff td .zwsp {
-  position: absolute;
-  width: 0;
-}
-
-.differential-diff th {
-  text-align: right;
-  padding: 1px 6px 1px 0;
-  vertical-align: top;
-  background: {$lightbluebackground};
-  color: {$bluetext};
-  cursor: pointer;
-  border-right: 1px solid {$thinblueborder};
-  overflow: hidden;
-
-  -moz-user-select: -moz-none;
-  -khtml-user-select: none;
-  -webkit-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
-}
-
 .prose-diff {
   padding: 12px 0;
   white-space: pre-wrap;
@@ -109,16 +87,8 @@
   color: {$darkgreytext};
 }
 
-.differential-changeset-immutable .differential-diff th {
+.differential-changeset-immutable .differential-diff td {
   cursor: auto;
-}
-
-.differential-diff th.old {
-  border-right-color: {$old-bright};
-}
-
-.differential-diff th.new {
-  border-right-color: {$new-bright};
 }
 
 .differential-diff td.old {
@@ -143,16 +113,38 @@
   background: {$old-bright};
 }
 
+
 .differential-diff td.new span.bright,
 .differential-diff td.new-full,
 .prose-diff span.new {
   background: {$new-bright};
 }
 
+.differential-diff td span.depth-out,
+.differential-diff td span.depth-in {
+  padding: 2px 0;
+  background-size: 12px 12px;
+  background-repeat: no-repeat;
+  background-position: left center;
+}
+
+.differential-diff td span.depth-out {
+  background-image: url(/rsrc/image/chevron-out.png);
+  background-color: {$old-bright};
+}
+
+.differential-diff td span.depth-in {
+  background-position: 1px center;
+  background-image: url(/rsrc/image/chevron-in.png);
+  background-color: {$new-bright};
+}
+
+
 .differential-diff td.copy {
   min-width: 0.5%;
   width: 0.5%;
   padding: 0;
+  background: {$lightbluebackground};
 }
 
 .differential-diff td.new-copy,
@@ -169,12 +161,38 @@
   background: #dddddd;
 }
 
-.differential-diff td.cov {
+.differential-diff .inline > td {
   padding: 0;
 }
 
-.diffusion-source td.cov {
-  padding: 0 8px;
+/* Specify line number behaviors after other behaviors because line numbers
+should always have a boring grey background. */
+
+.differential-diff td.n {
+  text-align: right;
+  padding: 1px 6px 1px 0;
+  vertical-align: top;
+  background: {$lightbluebackground};
+  color: {$bluetext};
+  cursor: pointer;
+  border-right: 1px solid {$thinblueborder};
+  overflow: hidden;
+}
+
+.differential-diff td + td.n {
+  border-left: 1px solid {$thinblueborder};
+}
+
+.differential-diff td.n::before {
+  content: attr(data-n);
+}
+
+.differential-diff td.show-context-line.n {
+  cursor: auto;
+}
+
+.differential-diff td.cov {
+  padding: 0;
 }
 
 td.cov-U {
@@ -213,7 +231,7 @@ td.cov-I {
 }
 
 .differential-diff td.show-more,
-.differential-diff th.show-context-line,
+.differential-diff td.show-context-line,
 .differential-diff td.show-context,
 .differential-diff td.differential-shield {
   background: {$lightbluebackground};
@@ -223,7 +241,7 @@ td.cov-I {
 }
 
 .device .differential-diff td.show-more,
-.device .differential-diff th.show-context-line,
+.device .differential-diff td.show-context-line,
 .device .differential-diff td.show-context,
 .device .differential-diff td.differential-shield {
   padding: 6px 0;
@@ -241,8 +259,12 @@ td.cov-I {
   color: {$bluetext};
 }
 
-.differential-diff th.show-context-line {
+.differential-diff td.show-context-line {
   padding-right: 6px;
+}
+
+.differential-diff td.show-context-line.left-context {
+  border-right: none;
 }
 
 .differential-diff td.show-context {
@@ -274,9 +296,9 @@ td.cov-I {
 }
 
 .differential-meta-notice {
-  border-top: 1px solid {$sh-lightyellowborder};
-  border-bottom: 1px solid {$sh-lightyellowborder};
-  background-color: {$sh-yellowbackground};
+  border-top: 1px solid {$gentle.highlight.border};
+  border-bottom: 1px solid {$gentle.highlight.border};
+  background-color: {$gentle.highlight};
   padding: 12px;
 }
 
@@ -288,7 +310,7 @@ td.cov-I {
   font-size: {$biggestfontsize};
   padding: 2px 0 20px 12px;
   line-height: 20px;
-  color: #000;
+  color: {$blacktext};
 }
 
 .device-phone .differential-changeset h1 {
@@ -307,14 +329,10 @@ td.cov-I {
   pointer-events: none;
 }
 
-.differential-diff .inline > td {
-  padding: 0;
-}
-
 .differential-loading {
-  border-top: 1px solid {$yellow};
-  border-bottom: 1px solid {$yellow};
-  background-color: {$lightyellow};
+  border-top: 1px solid {$gentle.highlight.border};
+  border-bottom: 1px solid {$gentle.highlight.border};
+  background-color: {$gentle.highlight};
   padding: 12px;
   text-align: center;
 }
@@ -392,53 +410,76 @@ tr.differential-inline-loading {
   top: 0;
   left: 0;
   right: 0;
-  background: rgba(255, 255, 255, 0.95);
+  background: {$page.content};
   box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.1);
   border-bottom: 1px solid {$lightgreyborder};
-  padding: 12px 18px;
+  padding: 8px 18px;
   vertical-align: middle;
   font-weight: bold;
   font-size: {$biggerfontsize};
-}
-
-.diff-banner .phui-icon-view {
-  margin-right: 4px;
+  line-height: 28px;
 }
 
 .diff-banner-path {
   color: {$greytext};
 }
 
-.scroll-objective-list {
-  position: fixed;
-  right: 0;
-  width: 24px;
-  top: 48px;
-  bottom: 48px;
-  background: rgba(255, 255, 255, 0.50);
-  border-style: solid;
-  border-color: rgba(255, 255, 255, 0.95);
-  border-width: 1px 0 1px 1px;
-  box-shadow: -1px 0 2px rgba(255, 255, 255, 0.10);
-  overflow: hidden;
+.diff-banner-buttons .button {
+  margin-left: 8px;
 }
 
-.scroll-objective-list.has-aesthetic-scrollbar {
-  /* For now, hide this element on systems with aesthetic scrollbars. */
-  display: none;
+.diff-banner-has-unsaved,
+.diff-banner-has-unsubmitted,
+.diff-banner-has-draft-done {
+  background: {$gentle.highlight};
 }
 
-.scroll-objective {
-  display: block;
-  position: absolute;
-  box-sizing: border-box;
-  cursor: pointer;
-  text-align: middle;
-  left: 7px;
+.diff-banner-buttons {
+  float: right;
 }
 
-.scroll-objective .phui-icon-view {
-  text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.25);
-  display: block;
-  height: 14px;
+/* In Firefox, making the table unselectable and then making cells selectable
+does not work: the cells remain unselectable. Narrowly mark the cells as
+unselectable. */
+
+.differential-diff.copy-l > tbody > tr > td,
+.differential-diff.copy-r > tbody > tr > td {
+  -moz-user-select: none;
+  -ms-user-select: none;
+  -webkit-user-select: none;
+  user-select: none;
+  opacity: 0.5;
+}
+
+.differential-diff.copy-l > tbody > tr > td:nth-child(2) {
+  -moz-user-select: auto;
+  -ms-user-select: auto;
+  -webkit-user-select: auto;
+  user-select: auto;
+  opacity: 1;
+}
+
+.differential-diff.copy-l > tbody > tr > td.show-more:nth-child(2) {
+  -moz-user-select: none;
+  -ms-user-select: none;
+  -webkit-user-select: none;
+  user-select: none;
+  opacity: 0.5;
+}
+
+.differential-diff.copy-r > tbody > tr > td:nth-child(5) {
+  -moz-user-select: auto;
+  -ms-user-select: auto;
+  -webkit-user-select: auto;
+  user-select: auto;
+  opacity: 1;
+}
+
+.differential-diff.copy-l > tbody > tr.inline > td,
+.differential-diff.copy-r > tbody > tr.inline > td {
+  -moz-user-select: none;
+  -ms-user-select: none;
+  -webkit-user-select: none;
+  user-select: none;
+  opacity: 0.5;
 }

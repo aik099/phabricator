@@ -79,7 +79,7 @@ final class PhabricatorPeopleSearchEngine
         ->setOptions(
           pht('(Show All)'),
           pht('Show Only Unapproved Users'),
-          pht('Hide Unappproved Users'))
+          pht('Hide Unapproved Users'))
         ->setDescription(
           pht(
             'Pass true to find only users awaiting administrative approval, '.
@@ -318,6 +318,31 @@ final class PhabricatorPeopleSearchEngine
     $result->setNoDataString(pht('No accounts found.'));
 
     return $result;
+  }
+
+  protected function newExportFields() {
+    return array(
+      id(new PhabricatorStringExportField())
+        ->setKey('username')
+        ->setLabel(pht('Username')),
+      id(new PhabricatorStringExportField())
+        ->setKey('realName')
+        ->setLabel(pht('Real Name')),
+    );
+  }
+
+  protected function newExportData(array $users) {
+    $viewer = $this->requireViewer();
+
+    $export = array();
+    foreach ($users as $user) {
+      $export[] = array(
+        'username' => $user->getUsername(),
+        'realName' => $user->getRealName(),
+      );
+    }
+
+    return $export;
   }
 
 }

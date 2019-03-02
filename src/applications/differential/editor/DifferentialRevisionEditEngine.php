@@ -7,8 +7,6 @@ final class DifferentialRevisionEditEngine
 
   const ENGINECONST = 'differential.revision';
 
-  const KEY_UPDATE = 'update';
-
   const ACTIONGROUP_REVIEW = 'review';
   const ACTIONGROUP_REVISION = 'revision';
 
@@ -73,6 +71,14 @@ final class DifferentialRevisionEditEngine
     return pht('Revision');
   }
 
+  protected function getCommentViewButtonText($object) {
+    if ($object->isDraft()) {
+      return pht('Submit Quietly');
+    }
+
+    return parent::getCommentViewButtonText($object);
+  }
+
   protected function getObjectViewURI($object) {
     return $object->getURI();
   }
@@ -123,15 +129,16 @@ final class DifferentialRevisionEditEngine
     $fields = array();
 
     $fields[] = id(new PhabricatorHandlesEditField())
-      ->setKey(self::KEY_UPDATE)
+      ->setKey(DifferentialRevisionUpdateTransaction::EDITKEY)
       ->setLabel(pht('Update Diff'))
       ->setDescription(pht('New diff to create or update the revision with.'))
       ->setConduitDescription(pht('Create or update a revision with a diff.'))
       ->setConduitTypeDescription(pht('PHID of the diff.'))
-      ->setTransactionType(DifferentialTransaction::TYPE_UPDATE)
+      ->setTransactionType(
+        DifferentialRevisionUpdateTransaction::TRANSACTIONTYPE)
       ->setHandleParameterType(new AphrontPHIDListHTTPParameterType())
       ->setSingleValue($diff_phid)
-      ->setIsConduitOnly(!$diff)
+      ->setIsFormField((bool)$diff)
       ->setIsReorderable(false)
       ->setIsDefaultable(false)
       ->setIsInvisible(true)
@@ -218,7 +225,7 @@ final class DifferentialRevisionEditEngine
     $fields[] = id(new PhabricatorHandlesEditField())
       ->setKey('tasks')
       ->setUseEdgeTransactions(true)
-      ->setIsConduitOnly(true)
+      ->setIsFormField(false)
       ->setTransactionType(PhabricatorTransactions::TYPE_EDGE)
       ->setMetadataValue(
         'edge:type',
@@ -228,12 +235,54 @@ final class DifferentialRevisionEditEngine
       ->setConduitTypeDescription(pht('List of tasks.'))
       ->setValue(array());
 
+    $fields[] = id(new PhabricatorHandlesEditField())
+      ->setKey('parents')
+      ->setUseEdgeTransactions(true)
+      ->setIsFormField(false)
+      ->setTransactionType(PhabricatorTransactions::TYPE_EDGE)
+      ->setMetadataValue(
+        'edge:type',
+        DifferentialRevisionDependsOnRevisionEdgeType::EDGECONST)
+      ->setDescription(pht('Parent revisions of this revision.'))
+      ->setConduitDescription(pht('Change associated parent revisions.'))
+      ->setConduitTypeDescription(pht('List of revisions.'))
+      ->setValue(array());
+
+    $fields[] = id(new PhabricatorHandlesEditField())
+      ->setKey('children')
+      ->setUseEdgeTransactions(true)
+      ->setIsFormField(false)
+      ->setTransactionType(PhabricatorTransactions::TYPE_EDGE)
+      ->setMetadataValue(
+        'edge:type',
+        DifferentialRevisionDependedOnByRevisionEdgeType::EDGECONST)
+      ->setDescription(pht('Child revisions of this revision.'))
+      ->setConduitDescription(pht('Change associated child revisions.'))
+      ->setConduitTypeDescription(pht('List of revisions.'))
+      ->setValue(array());
+
     $actions = DifferentialRevisionActionTransaction::loadAllActions();
     $actions = msortv($actions, 'getRevisionActionOrderVector');
 
     foreach ($actions as $key => $action) {
       $fields[] = $action->newEditField($object, $viewer);
     }
+
+    $fields[] = id(new PhabricatorBoolEditField())
+      ->setKey('draft')
+      ->setLabel(pht('Hold as Draft'))
+      ->setIsFormField(false)
+      ->setOptions(
+        pht('Autosubmit Once Builds Finish'),
+        pht('Hold as Draft'))
+      ->setTransactionType(
+        DifferentialRevisionHoldDraftTransaction::TRANSACTIONTYPE)
+      ->setDescription(pht('Hold revision as as draft.'))
+      ->setConduitDescription(
+        pht(
+          'Change autosubmission from draft state after builds finish.'))
+      ->setConduitTypeDescription(pht('New "Hold as Draft" setting.'))
+      ->setValue($object->getHoldAsDraft());
 
     return $fields;
   }
@@ -256,36 +305,17 @@ final class DifferentialRevisionEditEngine
       $object);
     $inlines = msort($inlines, 'getID');
 
-    foreach ($inlines as $inline) {
-      $xactions[] = id(new DifferentialTransaction())
-        ->setTransactionType(DifferentialTransaction::TYPE_INLINE)
-        ->attachComment($inline);
-    }
+    $editor = $object->getApplicationTransactionEditor()
+      ->setActor($viewer);
 
-    $viewer_phid = $viewer->getPHID();
-    $viewer_is_author = ($object->getAuthorPHID() == $viewer_phid);
-    if ($viewer_is_author) {
-      $state_map = PhabricatorTransactions::getInlineStateMap();
+    $query_template = id(new DifferentialDiffInlineCommentQuery())
+      ->withRevisionPHIDs(array($object->getPHID()));
 
-      $inlines = id(new DifferentialDiffInlineCommentQuery())
-        ->setViewer($viewer)
-        ->withRevisionPHIDs(array($object->getPHID()))
-        ->withFixedStates(array_keys($state_map))
-        ->execute();
-      if ($inlines) {
-        $old_value = mpull($inlines, 'getFixedState', 'getPHID');
-        $new_value = array();
-        foreach ($old_value as $key => $state) {
-          $new_value[$key] = $state_map[$state];
-        }
-
-        $xactions[] = id(new DifferentialTransaction())
-          ->setTransactionType(PhabricatorTransactions::TYPE_INLINESTATE)
-          ->setIgnoreOnNoEffect(true)
-          ->setOldValue($old_value)
-          ->setNewValue($new_value);
-      }
-    }
+    $xactions = $editor->newAutomaticInlineTransactions(
+      $object,
+      $inlines,
+      DifferentialTransaction::TYPE_INLINE,
+      $query_template);
 
     return $xactions;
   }

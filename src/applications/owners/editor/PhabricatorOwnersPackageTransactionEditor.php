@@ -27,7 +27,7 @@ final class PhabricatorOwnersPackageTransactionEditor
   }
 
   protected function getMailSubjectPrefix() {
-    return PhabricatorEnv::getEnvConfig('metamta.package.subject-prefix');
+    return pht('[Package]');
   }
 
   protected function getMailTo(PhabricatorLiskDAO $object) {
@@ -46,12 +46,10 @@ final class PhabricatorOwnersPackageTransactionEditor
   }
 
   protected function buildMailTemplate(PhabricatorLiskDAO $object) {
-    $id = $object->getID();
     $name = $object->getName();
 
     return id(new PhabricatorMetaMTAMail())
-      ->setSubject($name)
-      ->addHeader('Thread-Topic', $object->getPHID());
+      ->setSubject($name);
   }
 
   protected function buildMailBody(

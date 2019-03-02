@@ -10,7 +10,8 @@ final class DifferentialRevisionReclaimTransaction
     return pht('Reclaim Revision');
   }
 
-  protected function getRevisionActionDescription() {
+  protected function getRevisionActionDescription(
+    DifferentialRevision $revision) {
     return pht('This revision will be reclaimed and reopened.');
   }
 
@@ -47,7 +48,12 @@ final class DifferentialRevisionReclaimTransaction
   }
 
   public function applyInternalEffects($object, $value) {
-    $object->setStatus(ArcanistDifferentialRevisionStatus::NEEDS_REVIEW);
+    if ($object->getShouldBroadcast()) {
+      $new_status = DifferentialRevisionStatus::NEEDS_REVIEW;
+    } else {
+      $new_status = DifferentialRevisionStatus::DRAFT;
+    }
+    $object->setModernRevisionStatus($new_status);
   }
 
   protected function validateAction($object, PhabricatorUser $viewer) {
@@ -77,6 +83,14 @@ final class DifferentialRevisionReclaimTransaction
       '%s reclaimed %s.',
       $this->renderAuthor(),
       $this->renderObject());
+  }
+
+  public function getTransactionTypeForConduit($xaction) {
+    return 'reclaim';
+  }
+
+  public function getFieldValuesForConduit($object, $data) {
+    return array();
   }
 
 }

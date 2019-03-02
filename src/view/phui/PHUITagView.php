@@ -28,6 +28,8 @@ final class PHUITagView extends AphrontTagView {
   const COLOR_OBJECT        = 'object';
   const COLOR_PERSON        = 'person';
 
+  const BORDER_NONE         = 'border-none';
+
   private $type;
   private $href;
   private $name;
@@ -40,6 +42,7 @@ final class PHUITagView extends AphrontTagView {
   private $icon;
   private $shade;
   private $slimShady;
+  private $border;
 
   public function setType($type) {
     $this->type = $type;
@@ -104,13 +107,18 @@ final class PHUITagView extends AphrontTagView {
     return $this;
   }
 
+  public function setBorder($border) {
+    $this->border = $border;
+    return $this;
+  }
+
   public function setIcon($icon) {
     $this->icon = $icon;
     return $this;
   }
 
-  public function setSlimShady($mm) {
-    $this->slimShady = $mm;
+  public function setSlimShady($is_eminem) {
+    $this->slimShady = $is_eminem;
     return $this;
   }
 
@@ -142,25 +150,34 @@ final class PHUITagView extends AphrontTagView {
       $classes[] = 'phui-tag-icon-view';
     }
 
-    if ($this->phid) {
-      Javelin::initBehavior('phui-hovercards');
+    if ($this->border) {
+      $classes[] = 'phui-tag-'.$this->border;
+    }
 
-      $attributes = array(
-        'href'  => $this->href,
-        'sigil' => 'hovercard',
-        'meta'  => array(
-          'hoverPHID' => $this->phid,
-        ),
-        'target' => $this->external ? '_blank' : null,
-      );
-    } else {
-      $attributes = array(
-        'href'  => $this->href,
-        'target' => $this->external ? '_blank' : null,
+    $attributes = array(
+      'href' => $this->href,
+      'class' => $classes,
+    );
+
+    if ($this->external) {
+      $attributes += array(
+        'target' => '_blank',
+        'rel' => 'noreferrer',
       );
     }
 
-    return $attributes + array('class' => $classes);
+    if ($this->phid) {
+      Javelin::initBehavior('phui-hovercards');
+
+      $attributes += array(
+        'sigil' => 'hovercard',
+        'meta' => array(
+          'hoverPHID' => $this->phid,
+        ),
+      );
+    }
+
+    return $attributes;
   }
 
   protected function getTagContent() {

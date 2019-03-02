@@ -2,20 +2,19 @@
 
 final class PholioMock extends PholioDAO
   implements
-    PhabricatorMarkupInterface,
     PhabricatorPolicyInterface,
     PhabricatorSubscribableInterface,
     PhabricatorTokenReceiverInterface,
     PhabricatorFlaggableInterface,
     PhabricatorAuthorAwareInterface,
     PhabricatorApplicationTransactionInterface,
+    PhabricatorTimelineInterface,
     PhabricatorProjectInterface,
     PhabricatorDestructibleInterface,
     PhabricatorSpacesInterface,
     PhabricatorMentionableInterface,
-    PhabricatorFulltextInterface {
-
-  const MARKUP_FIELD_DESCRIPTION  = 'markup:description';
+    PhabricatorFulltextInterface,
+    PhabricatorFerretInterface {
 
   const STATUS_OPEN = 'open';
   const STATUS_CLOSED = 'closed';
@@ -25,15 +24,12 @@ final class PholioMock extends PholioDAO
   protected $editPolicy;
 
   protected $name;
-  protected $originalName;
   protected $description;
   protected $coverPHID;
-  protected $mailKey;
   protected $status;
   protected $spacePHID;
 
   private $images = self::ATTACHABLE;
-  private $allImages = self::ATTACHABLE;
   private $coverFile = self::ATTACHABLE;
   private $tokenCount = self::ATTACHABLE;
 
@@ -59,22 +55,19 @@ final class PholioMock extends PholioDAO
     return 'M'.$this->getID();
   }
 
+  public function getURI() {
+    return '/'.$this->getMonogram();
+  }
+
   protected function getConfiguration() {
     return array(
       self::CONFIG_AUX_PHID => true,
       self::CONFIG_COLUMN_SCHEMA => array(
         'name' => 'text128',
         'description' => 'text',
-        'originalName' => 'text128',
-        'mailKey' => 'bytes20',
         'status' => 'text12',
       ),
       self::CONFIG_KEY_SCHEMA => array(
-        'key_phid' => null,
-        'phid' => array(
-          'columns' => array('phid'),
-          'unique' => true,
-        ),
         'authorPHID' => array(
           'columns' => array('authorPHID'),
         ),
@@ -82,44 +75,32 @@ final class PholioMock extends PholioDAO
     ) + parent::getConfiguration();
   }
 
-  public function generatePHID() {
-    return PhabricatorPHID::generateNewPHID('MOCK');
+  public function getPHIDType() {
+    return PholioMockPHIDType::TYPECONST;
   }
 
-  public function save() {
-    if (!$this->getMailKey()) {
-      $this->setMailKey(Filesystem::readRandomCharacters(20));
-    }
-    return parent::save();
-  }
-
-  /**
-   * These should be the images currently associated with the Mock.
-   */
   public function attachImages(array $images) {
     assert_instances_of($images, 'PholioImage');
+    $images = mpull($images, null, 'getPHID');
+    $images = msort($images, 'getSequence');
     $this->images = $images;
     return $this;
   }
 
   public function getImages() {
-    $this->assertAttached($this->images);
-    return $this->images;
+    return $this->assertAttached($this->images);
   }
 
-  /**
-   * These should be *all* images associated with the Mock. This includes
-   * images which have been removed and / or replaced from the Mock.
-   */
-  public function attachAllImages(array $images) {
-    assert_instances_of($images, 'PholioImage');
-    $this->allImages = $images;
-    return $this;
-  }
+  public function getActiveImages() {
+    $images = $this->getImages();
 
-  public function getAllImages() {
-    $this->assertAttached($this->images);
-    return $this->allImages;
+    foreach ($images as $phid => $image) {
+      if ($image->getIsObsolete()) {
+        unset($images[$phid]);
+      }
+    }
+
+    return $images;
   }
 
   public function attachCoverFile(PhabricatorFile $file) {
@@ -143,7 +124,7 @@ final class PholioMock extends PholioDAO
   }
 
   public function getImageHistorySet($image_id) {
-    $images = $this->getAllImages();
+    $images = $this->getImages();
     $images = mpull($images, null, 'getID');
     $selected_image = $images[$image_id];
 
@@ -214,41 +195,6 @@ final class PholioMock extends PholioDAO
   }
 
 
-/* -(  PhabricatorMarkupInterface  )----------------------------------------- */
-
-
-  public function getMarkupFieldKey($field) {
-    $content = $this->getMarkupText($field);
-    return PhabricatorMarkupEngine::digestRemarkupContent($this, $content);
-  }
-
-  public function newMarkupEngine($field) {
-    return PhabricatorMarkupEngine::newMarkupEngine(array());
-  }
-
-  public function getMarkupText($field) {
-    if ($this->getDescription()) {
-      return $this->getDescription();
-    }
-
-    return null;
-  }
-
-  public function didMarkupText($field, $output, PhutilMarkupEngine $engine) {
-    require_celerity_resource('phabricator-remarkup-css');
-    return phutil_tag(
-      'div',
-      array(
-        'class' => 'phabricator-remarkup',
-      ),
-      $output);
-  }
-
-  public function shouldUseMarkupCache($field) {
-    return (bool)$this->getID();
-  }
-
-
 /* -(  PhabricatorApplicationTransactionInterface  )------------------------- */
 
 
@@ -256,25 +202,10 @@ final class PholioMock extends PholioDAO
     return new PholioMockEditor();
   }
 
-  public function getApplicationTransactionObject() {
-    return $this;
-  }
-
   public function getApplicationTransactionTemplate() {
     return new PholioTransaction();
   }
 
-  public function willRenderTimeline(
-    PhabricatorApplicationTransactionView $timeline,
-    AphrontRequest $request) {
-
-    PholioMockQuery::loadImages(
-      $request->getUser(),
-      array($this),
-      $need_inline_comments = true);
-    $timeline->setMock($this);
-    return $timeline;
-  }
 
 /* -(  PhabricatorTokenReceiverInterface  )---------------------------------- */
 
@@ -293,9 +224,10 @@ final class PholioMock extends PholioDAO
     PhabricatorDestructionEngine $engine) {
 
     $this->openTransaction();
-      $images = id(new PholioImage())->loadAllWhere(
-        'mockID = %d',
-        $this->getID());
+      $images = id(new PholioImageQuery())
+        ->setViewer($engine->getViewer())
+        ->withMockIDs(array($this->getPHID()))
+        ->execute();
       foreach ($images as $image) {
         $image->delete();
       }
@@ -325,6 +257,22 @@ final class PholioMock extends PholioDAO
 
   public function newFulltextEngine() {
     return new PholioMockFulltextEngine();
+  }
+
+
+/* -(  PhabricatorFerretInterface  )----------------------------------------- */
+
+
+  public function newFerretEngine() {
+    return new PholioMockFerretEngine();
+  }
+
+
+/* -(  PhabricatorTimelineInterace  )---------------------------------------- */
+
+
+  public function newTimelineEngine() {
+    return new PholioMockTimelineEngine();
   }
 
 

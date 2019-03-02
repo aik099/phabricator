@@ -10,6 +10,10 @@ final class PhabricatorActivitySettingsPanel extends PhabricatorSettingsPanel {
     return pht('Activity Logs');
   }
 
+  public function getPanelMenuIcon() {
+    return 'fa-list';
+  }
+
   public function getPanelGroupKey() {
     return PhabricatorSettingsLogsPanelGroup::PANELGROUPKEY;
   }
@@ -26,29 +30,11 @@ final class PhabricatorActivitySettingsPanel extends PhabricatorSettingsPanel {
       ->withRelatedPHIDs(array($user->getPHID()))
       ->executeWithCursorPager($pager);
 
-    $phids = array();
-    foreach ($logs as $log) {
-      $phids[] = $log->getUserPHID();
-      $phids[] = $log->getActorPHID();
-    }
-
-    if ($phids) {
-      $handles = id(new PhabricatorHandleQuery())
-        ->setViewer($viewer)
-        ->withPHIDs($phids)
-        ->execute();
-    } else {
-      $handles = array();
-    }
-
     $table = id(new PhabricatorUserLogView())
       ->setUser($viewer)
-      ->setLogs($logs)
-      ->setHandles($handles);
+      ->setLogs($logs);
 
-    $panel = id(new PHUIObjectBoxView())
-      ->setHeaderText(pht('Account Activity Logs'))
-      ->setTable($table);
+    $panel = $this->newBox(pht('Account Activity Logs'), $table);
 
     $pager_box = id(new PHUIBoxView())
       ->addMargin(PHUI::MARGIN_LARGE)

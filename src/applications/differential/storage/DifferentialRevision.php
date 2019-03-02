@@ -13,15 +13,16 @@ final class DifferentialRevision extends DifferentialDAO
     PhabricatorSubscribableInterface,
     PhabricatorCustomFieldInterface,
     PhabricatorApplicationTransactionInterface,
+    PhabricatorTimelineInterface,
     PhabricatorMentionableInterface,
     PhabricatorDestructibleInterface,
     PhabricatorProjectInterface,
     PhabricatorFulltextInterface,
+    PhabricatorFerretInterface,
     PhabricatorConduitResultInterface,
     PhabricatorDraftInterface {
 
   protected $title = '';
-  protected $originalTitle;
   protected $status;
 
   protected $summary = '';
@@ -36,6 +37,8 @@ final class DifferentialRevision extends DifferentialDAO
   protected $mailKey;
   protected $branchName;
   protected $repositoryPHID;
+  protected $activeDiffPHID;
+
   protected $viewPolicy = PhabricatorPolicies::POLICY_USER;
   protected $editPolicy = PhabricatorPolicies::POLICY_USER;
   protected $properties = array();
@@ -58,6 +61,11 @@ final class DifferentialRevision extends DifferentialDAO
   const RELATION_SUBSCRIBED   = 'subd';
 
   const PROPERTY_CLOSED_FROM_ACCEPTED = 'wasAcceptedBeforeClose';
+  const PROPERTY_DRAFT_HOLD = 'draft.hold';
+  const PROPERTY_SHOULD_BROADCAST = 'draft.broadcast';
+  const PROPERTY_LINES_ADDED = 'lines.added';
+  const PROPERTY_LINES_REMOVED = 'lines.removed';
+  const PROPERTY_BUILDABLES = 'buildables';
 
   public static function initializeNewRevision(PhabricatorUser $actor) {
     $app = id(new PhabricatorApplicationQuery())
@@ -68,13 +76,22 @@ final class DifferentialRevision extends DifferentialDAO
     $view_policy = $app->getPolicy(
       DifferentialDefaultViewCapability::CAPABILITY);
 
+    if (PhabricatorEnv::getEnvConfig('phabricator.show-prototypes')) {
+      $initial_state = DifferentialRevisionStatus::DRAFT;
+      $should_broadcast = false;
+    } else {
+      $initial_state = DifferentialRevisionStatus::NEEDS_REVIEW;
+      $should_broadcast = true;
+    }
+
     return id(new DifferentialRevision())
       ->setViewPolicy($view_policy)
       ->setAuthorPHID($actor->getPHID())
       ->attachRepository(null)
       ->attachActiveDiff(null)
       ->attachReviewers(array())
-      ->setStatus(ArcanistDifferentialRevisionStatus::NEEDS_REVIEW);
+      ->setModernRevisionStatus($initial_state)
+      ->setShouldBroadcast($should_broadcast);
   }
 
   protected function getConfiguration() {
@@ -87,7 +104,6 @@ final class DifferentialRevision extends DifferentialDAO
       ),
       self::CONFIG_COLUMN_SCHEMA => array(
         'title' => 'text255',
-        'originalTitle' => 'text255',
         'status' => 'text32',
         'summary' => 'text',
         'testPlan' => 'text',
@@ -142,14 +158,6 @@ final class DifferentialRevision extends DifferentialDAO
 
   public function getURI() {
     return '/'.$this->getMonogram();
-  }
-
-  public function setTitle($title) {
-    $this->title = $title;
-    if (!$this->getID()) {
-      $this->originalTitle = $title;
-    }
-    return $this;
   }
 
   public function loadIDsByCommitPHIDs($phids) {
@@ -443,7 +451,7 @@ final class DifferentialRevision extends DifferentialDAO
 
     // For each path which the viewer owns a package for, find other packages
     // which that authority can be used to force-accept. Once we find a way to
-    // force-accept a package, we don't need to keep loooking.
+    // force-accept a package, we don't need to keep looking.
     $has_control = array();
     foreach ($force_map as $path => $spec) {
       $path_fragments = PhabricatorOwnersPackage::splitPath($path);
@@ -525,7 +533,6 @@ final class DifferentialRevision extends DifferentialDAO
 
     switch ($capability) {
       case PhabricatorPolicyCapability::CAN_VIEW:
-        $description[] = pht("A revision's reviewers can always view it.");
         $description[] = pht(
           'If a revision belongs to a repository, other users must be able '.
           'to view the repository in order to view the revision.');
@@ -583,6 +590,10 @@ final class DifferentialRevision extends DifferentialDAO
     return $this;
   }
 
+  public function hasAttachedReviewers() {
+    return ($this->reviewerStatus !== self::ATTACHABLE);
+  }
+
   public function getReviewerPHIDs() {
     $reviewers = $this->getReviewers();
     return mpull($reviewers, 'getReviewerPHID');
@@ -615,43 +626,69 @@ final class DifferentialRevision extends DifferentialDAO
     return $this;
   }
 
+  public function setModernRevisionStatus($status) {
+    return $this->setStatus($status);
+  }
+
+  public function getModernRevisionStatus() {
+    return $this->getStatus();
+  }
+
+  public function getLegacyRevisionStatus() {
+    return $this->getStatusObject()->getLegacyKey();
+  }
+
   public function isClosed() {
-    return DifferentialRevisionStatus::isClosedStatus($this->getStatus());
+    return $this->getStatusObject()->isClosedStatus();
   }
 
   public function isAbandoned() {
-    $status_abandoned = ArcanistDifferentialRevisionStatus::ABANDONED;
-    return ($this->getStatus() == $status_abandoned);
+    return $this->getStatusObject()->isAbandoned();
   }
 
   public function isAccepted() {
-    $status_accepted = ArcanistDifferentialRevisionStatus::ACCEPTED;
-    return ($this->getStatus() == $status_accepted);
+    return $this->getStatusObject()->isAccepted();
+  }
+
+  public function isNeedsReview() {
+    return $this->getStatusObject()->isNeedsReview();
+  }
+
+  public function isNeedsRevision() {
+    return $this->getStatusObject()->isNeedsRevision();
+  }
+
+  public function isChangePlanned() {
+    return $this->getStatusObject()->isChangePlanned();
+  }
+
+  public function isPublished() {
+    return $this->getStatusObject()->isPublished();
+  }
+
+  public function isDraft() {
+    return $this->getStatusObject()->isDraft();
   }
 
   public function getStatusIcon() {
-    $map = array(
-      ArcanistDifferentialRevisionStatus::NEEDS_REVIEW
-        => 'fa-code grey',
-      ArcanistDifferentialRevisionStatus::NEEDS_REVISION
-        => 'fa-refresh red',
-      ArcanistDifferentialRevisionStatus::CHANGES_PLANNED
-        => 'fa-headphones red',
-      ArcanistDifferentialRevisionStatus::ACCEPTED
-        => 'fa-check green',
-      ArcanistDifferentialRevisionStatus::CLOSED
-        => 'fa-check-square-o black',
-      ArcanistDifferentialRevisionStatus::ABANDONED
-        => 'fa-plane black',
-    );
-
-    return idx($map, $this->getStatus());
+    return $this->getStatusObject()->getIcon();
   }
 
   public function getStatusDisplayName() {
+    return $this->getStatusObject()->getDisplayName();
+  }
+
+  public function getStatusIconColor() {
+    return $this->getStatusObject()->getIconColor();
+  }
+
+  public function getStatusTagColor() {
+    return $this->getStatusObject()->getTagColor();
+  }
+
+  public function getStatusObject() {
     $status = $this->getStatus();
-    return ArcanistDifferentialRevisionStatus::getNameForRevisionStatus(
-      $status);
+    return DifferentialRevisionStatus::newForStatus($status);
   }
 
   public function getFlag(PhabricatorUser $viewer) {
@@ -674,6 +711,192 @@ final class DifferentialRevision extends DifferentialDAO
     return $this;
   }
 
+  public function getHoldAsDraft() {
+    return $this->getProperty(self::PROPERTY_DRAFT_HOLD, false);
+  }
+
+  public function setHoldAsDraft($hold) {
+    return $this->setProperty(self::PROPERTY_DRAFT_HOLD, $hold);
+  }
+
+  public function getShouldBroadcast() {
+    return $this->getProperty(self::PROPERTY_SHOULD_BROADCAST, true);
+  }
+
+  public function setShouldBroadcast($should_broadcast) {
+    return $this->setProperty(
+      self::PROPERTY_SHOULD_BROADCAST,
+      $should_broadcast);
+  }
+
+  public function setAddedLineCount($count) {
+    return $this->setProperty(self::PROPERTY_LINES_ADDED, $count);
+  }
+
+  public function getAddedLineCount() {
+    return $this->getProperty(self::PROPERTY_LINES_ADDED);
+  }
+
+  public function setRemovedLineCount($count) {
+    return $this->setProperty(self::PROPERTY_LINES_REMOVED, $count);
+  }
+
+  public function getRemovedLineCount() {
+    return $this->getProperty(self::PROPERTY_LINES_REMOVED);
+  }
+
+  public function hasLineCounts() {
+    // This data was not populated on older revisions, so it may not be
+    // present on all revisions.
+    return isset($this->properties[self::PROPERTY_LINES_ADDED]);
+  }
+
+  public function getRevisionScaleGlyphs() {
+    $add = $this->getAddedLineCount();
+    $rem = $this->getRemovedLineCount();
+    $all = ($add + $rem);
+
+    if (!$all) {
+      return '       ';
+    }
+
+    $map = array(
+      20 => 2,
+      50 => 3,
+      150 => 4,
+      375 => 5,
+      1000 => 6,
+      2500 => 7,
+    );
+
+    $n = 1;
+    foreach ($map as $size => $count) {
+      if ($size <= $all) {
+        $n = $count;
+      } else {
+        break;
+      }
+    }
+
+    $add_n = (int)ceil(($add / $all) * $n);
+    $rem_n = (int)ceil(($rem / $all) * $n);
+
+    while ($add_n + $rem_n > $n) {
+      if ($add_n > 1) {
+        $add_n--;
+      } else {
+        $rem_n--;
+      }
+    }
+
+    return
+      str_repeat('+', $add_n).
+      str_repeat('-', $rem_n).
+      str_repeat(' ', (7 - $n));
+  }
+
+  public function getBuildableStatus($phid) {
+    $buildables = $this->getProperty(self::PROPERTY_BUILDABLES);
+    if (!is_array($buildables)) {
+      $buildables = array();
+    }
+
+    $buildable = idx($buildables, $phid);
+    if (!is_array($buildable)) {
+      $buildable = array();
+    }
+
+    return idx($buildable, 'status');
+  }
+
+  public function setBuildableStatus($phid, $status) {
+    $buildables = $this->getProperty(self::PROPERTY_BUILDABLES);
+    if (!is_array($buildables)) {
+      $buildables = array();
+    }
+
+    $buildable = idx($buildables, $phid);
+    if (!is_array($buildable)) {
+      $buildable = array();
+    }
+
+    $buildable['status'] = $status;
+
+    $buildables[$phid] = $buildable;
+
+    return $this->setProperty(self::PROPERTY_BUILDABLES, $buildables);
+  }
+
+  public function newBuildableStatus(PhabricatorUser $viewer, $phid) {
+    // For Differential, we're ignoring autobuilds (local lint and unit)
+    // when computing build status. Differential only cares about remote
+    // builds when making publishing and undrafting decisions.
+
+    $builds = $this->loadImpactfulBuildsForBuildablePHIDs(
+      $viewer,
+      array($phid));
+
+    return $this->newBuildableStatusForBuilds($builds);
+  }
+
+  public function newBuildableStatusForBuilds(array $builds) {
+    // If we have nothing but passing builds, the buildable passes.
+    if (!$builds) {
+      return HarbormasterBuildableStatus::STATUS_PASSED;
+    }
+
+    // If we have any completed, non-passing builds, the buildable fails.
+    foreach ($builds as $build) {
+      if ($build->isComplete()) {
+        return HarbormasterBuildableStatus::STATUS_FAILED;
+      }
+    }
+
+    // Otherwise, we're still waiting for the build to pass or fail.
+    return null;
+  }
+
+  public function loadImpactfulBuilds(PhabricatorUser $viewer) {
+    $diff = $this->getActiveDiff();
+
+    // NOTE: We can't use `withContainerPHIDs()` here because the container
+    // update in Harbormaster is not synchronous.
+    $buildables = id(new HarbormasterBuildableQuery())
+      ->setViewer($viewer)
+      ->withBuildablePHIDs(array($diff->getPHID()))
+      ->withManualBuildables(false)
+      ->execute();
+    if (!$buildables) {
+      return array();
+    }
+
+    return $this->loadImpactfulBuildsForBuildablePHIDs(
+      $viewer,
+      mpull($buildables, 'getPHID'));
+  }
+
+  private function loadImpactfulBuildsForBuildablePHIDs(
+    PhabricatorUser $viewer,
+    array $phids) {
+
+    return id(new HarbormasterBuildQuery())
+      ->setViewer($viewer)
+      ->withBuildablePHIDs($phids)
+      ->withAutobuilds(false)
+      ->withBuildStatuses(
+        array(
+          HarbormasterBuildStatus::STATUS_INACTIVE,
+          HarbormasterBuildStatus::STATUS_PENDING,
+          HarbormasterBuildStatus::STATUS_BUILDING,
+          HarbormasterBuildStatus::STATUS_FAILED,
+          HarbormasterBuildStatus::STATUS_ABORTED,
+          HarbormasterBuildStatus::STATUS_ERROR,
+          HarbormasterBuildStatus::STATUS_PAUSED,
+          HarbormasterBuildStatus::STATUS_DEADLOCKED,
+        ))
+      ->execute();
+  }
+
 
 /* -(  HarbormasterBuildableInterface  )------------------------------------- */
 
@@ -690,16 +913,16 @@ final class DifferentialRevision extends DifferentialDAO
     return $this->getPHID();
   }
 
-  public function getHarbormasterPublishablePHID() {
-    return $this->getPHID();
-  }
-
   public function getBuildVariables() {
     return array();
   }
 
   public function getAvailableBuildVariables() {
     return array();
+  }
+
+  public function newBuildableEngine() {
+    return new DifferentialBuildableEngine();
   }
 
 
@@ -727,9 +950,15 @@ final class DifferentialRevision extends DifferentialDAO
     }
 
     foreach ($reviewers as $reviewer) {
-      if ($reviewer->getReviewerPHID() == $phid) {
-        return true;
+      if ($reviewer->getReviewerPHID() !== $phid) {
+        continue;
       }
+
+      if ($reviewer->isResigned()) {
+        continue;
+      }
+
+      return true;
     }
 
     return false;
@@ -764,79 +993,8 @@ final class DifferentialRevision extends DifferentialDAO
     return new DifferentialTransactionEditor();
   }
 
-  public function getApplicationTransactionObject() {
-    return $this;
-  }
-
   public function getApplicationTransactionTemplate() {
     return new DifferentialTransaction();
-  }
-
-  public function willRenderTimeline(
-    PhabricatorApplicationTransactionView $timeline,
-    AphrontRequest $request) {
-    $viewer = $request->getViewer();
-
-    $render_data = $timeline->getRenderData();
-    $left = $request->getInt('left', idx($render_data, 'left'));
-    $right = $request->getInt('right', idx($render_data, 'right'));
-
-    $diffs = id(new DifferentialDiffQuery())
-      ->setViewer($request->getUser())
-      ->withIDs(array($left, $right))
-      ->execute();
-    $diffs = mpull($diffs, null, 'getID');
-    $left_diff = $diffs[$left];
-    $right_diff = $diffs[$right];
-
-    $old_ids = $request->getStr('old', idx($render_data, 'old'));
-    $new_ids = $request->getStr('new', idx($render_data, 'new'));
-    $old_ids = array_filter(explode(',', $old_ids));
-    $new_ids = array_filter(explode(',', $new_ids));
-
-    $type_inline = DifferentialTransaction::TYPE_INLINE;
-    $changeset_ids = array_merge($old_ids, $new_ids);
-    $inlines = array();
-    foreach ($timeline->getTransactions() as $xaction) {
-      if ($xaction->getTransactionType() == $type_inline) {
-        $inlines[] = $xaction->getComment();
-        $changeset_ids[] = $xaction->getComment()->getChangesetID();
-      }
-    }
-
-    if ($changeset_ids) {
-      $changesets = id(new DifferentialChangesetQuery())
-        ->setViewer($request->getUser())
-        ->withIDs($changeset_ids)
-        ->execute();
-      $changesets = mpull($changesets, null, 'getID');
-    } else {
-      $changesets = array();
-    }
-
-    foreach ($inlines as $key => $inline) {
-      $inlines[$key] = DifferentialInlineComment::newFromModernComment(
-        $inline);
-    }
-
-    $query = id(new DifferentialInlineCommentQuery())
-      ->needHidden(true)
-      ->setViewer($viewer);
-
-    // NOTE: This is a bit sketchy: this method adjusts the inlines as a
-    // side effect, which means it will ultimately adjust the transaction
-    // comments and affect timeline rendering.
-    $query->adjustInlinesForChangesets(
-      $inlines,
-      array_select_keys($changesets, $old_ids),
-      array_select_keys($changesets, $new_ids),
-      $this);
-
-    return $timeline
-      ->setChangesets($changesets)
-      ->setRevision($this)
-      ->setLeftDiff($left_diff)
-      ->setRightDiff($right_diff);
   }
 
 
@@ -863,7 +1021,7 @@ final class DifferentialRevision extends DifferentialDAO
         self::TABLE_COMMIT,
         $this->getID());
 
-      // we have to do paths a little differentally as they do not have
+      // we have to do paths a little differently as they do not have
       // an id or phid column for delete() to act on
       $dummy_path = new DifferentialAffectedPath();
       queryfx(
@@ -899,6 +1057,14 @@ final class DifferentialRevision extends DifferentialDAO
   }
 
 
+/* -(  PhabricatorFerretInterface  )----------------------------------------- */
+
+
+  public function newFerretEngine() {
+    return new DifferentialRevisionFerretEngine();
+  }
+
+
 /* -(  PhabricatorConduitResultInterface  )---------------------------------- */
 
 
@@ -912,13 +1078,62 @@ final class DifferentialRevision extends DifferentialDAO
         ->setKey('authorPHID')
         ->setType('phid')
         ->setDescription(pht('Revision author PHID.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('status')
+        ->setType('map<string, wild>')
+        ->setDescription(pht('Information about revision status.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('repositoryPHID')
+        ->setType('phid?')
+        ->setDescription(pht('Revision repository PHID.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('diffPHID')
+        ->setType('phid')
+        ->setDescription(pht('Active diff PHID.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('summary')
+        ->setType('string')
+        ->setDescription(pht('Revision summary.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('testPlan')
+        ->setType('string')
+        ->setDescription(pht('Revision test plan.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('isDraft')
+        ->setType('bool')
+        ->setDescription(
+          pht(
+            'True if this revision is in any draft state, and thus not '.
+            'notifying reviewers and subscribers about changes.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('holdAsDraft')
+        ->setType('bool')
+        ->setDescription(
+          pht(
+            'True if this revision is being held as a draft. It will not be '.
+            'automatically submitted for review even if tests pass.')),
     );
   }
 
   public function getFieldValuesForConduit() {
+    $status = $this->getStatusObject();
+    $status_info = array(
+      'value' => $status->getKey(),
+      'name' => $status->getDisplayName(),
+      'closed' => $status->isClosedStatus(),
+      'color.ansi' => $status->getANSIColor(),
+    );
+
     return array(
       'title' => $this->getTitle(),
       'authorPHID' => $this->getAuthorPHID(),
+      'status' => $status_info,
+      'repositoryPHID' => $this->getRepositoryPHID(),
+      'diffPHID' => $this->getActiveDiffPHID(),
+      'summary' => $this->getSummary(),
+      'testPlan' => $this->getTestPlan(),
+      'isDraft' => !$this->getShouldBroadcast(),
+      'holdAsDraft' => (bool)$this->getHoldAsDraft(),
     );
   }
 
@@ -936,5 +1151,14 @@ final class DifferentialRevision extends DifferentialDAO
   public function newDraftEngine() {
     return new DifferentialRevisionDraftEngine();
   }
+
+
+/* -(  PhabricatorTimelineInterface  )--------------------------------------- */
+
+
+  public function newTimelineEngine() {
+    return new DifferentialRevisionTimelineEngine();
+  }
+
 
 }

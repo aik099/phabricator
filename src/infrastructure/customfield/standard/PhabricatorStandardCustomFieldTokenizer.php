@@ -33,10 +33,26 @@ abstract class PhabricatorStandardCustomFieldTokenizer
     $control = id(new AphrontFormTokenizerControl())
       ->setLabel($this->getFieldName())
       ->setName($this->getFieldKey())
-      ->setDatasource($this->getDatasource())
+      ->setDatasource($this->newApplicationSearchDatasource())
       ->setValue(nonempty($value, array()));
 
     $form->appendControl($control);
+  }
+
+  public function applyApplicationSearchConstraintToQuery(
+    PhabricatorApplicationSearchEngine $engine,
+    PhabricatorCursorPagedPolicyAwareQuery $query,
+    $value) {
+    if ($value) {
+
+      $datasource = $this->newApplicationSearchDatasource()
+        ->setViewer($this->getViewer());
+      $value = $datasource->evaluateTokens($value);
+
+      $query->withApplicationSearchContainsConstraint(
+        $this->newStringIndex(null),
+        $value);
+    }
   }
 
   public function getHeraldFieldValueType($condition) {
@@ -63,6 +79,90 @@ abstract class PhabricatorStandardCustomFieldTokenizer
 
   protected function newConduitEditParameterType() {
     return new ConduitPHIDListParameterType();
+  }
+
+  protected function newBulkParameterType() {
+    $datasource = $this->getDatasource();
+
+    $limit = $this->getFieldConfigValue('limit');
+    if ($limit) {
+      $datasource->setLimit($limit);
+    }
+
+    return id(new BulkTokenizerParameterType())
+      ->setDatasource($datasource);
+  }
+
+  public function shouldAppearInHeraldActions() {
+    return true;
+  }
+
+  public function getHeraldActionName() {
+    return pht('Set "%s" to', $this->getFieldName());
+  }
+
+  public function getHeraldActionDescription($value) {
+    $list = $this->renderHeraldHandleList($value);
+    return pht('Set "%s" to: %s.', $this->getFieldName(), $list);
+  }
+
+  public function getHeraldActionEffectDescription($value) {
+    return $this->renderHeraldHandleList($value);
+  }
+
+  public function getHeraldActionStandardType() {
+    return HeraldAction::STANDARD_PHID_LIST;
+  }
+
+  public function getHeraldActionDatasource() {
+    $datasource = $this->getDatasource();
+
+    $limit = $this->getFieldConfigValue('limit');
+    if ($limit) {
+      $datasource->setLimit($limit);
+    }
+
+    return $datasource;
+  }
+
+  private function renderHeraldHandleList($value) {
+    if (!is_array($value)) {
+      return pht('(Invalid List)');
+    } else {
+      return $this->getViewer()
+        ->renderHandleList($value)
+        ->setAsInline(true)
+        ->render();
+    }
+  }
+
+  protected function newApplicationSearchDatasource() {
+    $datasource = $this->getDatasource();
+
+    return id(new PhabricatorCustomFieldApplicationSearchDatasource())
+      ->setDatasource($datasource);
+  }
+
+  protected function newCommentAction() {
+    $viewer = $this->getViewer();
+
+    $datasource = $this->getDatasource()
+      ->setViewer($viewer);
+
+    $action = id(new PhabricatorEditEngineTokenizerCommentAction())
+      ->setDatasource($datasource);
+
+    $limit = $this->getFieldConfigValue('limit');
+    if ($limit) {
+      $action->setLimit($limit);
+    }
+
+    $value = $this->getFieldValue();
+    if ($value !== null) {
+      $action->setInitialValue($value);
+    }
+
+    return $action;
   }
 
 }

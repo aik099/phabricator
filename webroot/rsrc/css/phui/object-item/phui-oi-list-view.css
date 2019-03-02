@@ -37,7 +37,7 @@ ul.phui-oi-list-view {
   border-color: {$lightgreyborder};
   margin: 5px 0;
   overflow: hidden;
-  background: #fff;
+  background: {$page.content};
   margin-bottom: 4px;
 }
 
@@ -105,7 +105,7 @@ ul.phui-oi-list-view {
 }
 
 .phui-oi-objname {
-  color: #000;
+  color: {$blacktext};
   cursor: text;
   font-weight: bold;
 }
@@ -180,6 +180,10 @@ ul.phui-oi-list-view {
   width: 160px;
   display: table-cell;
   vertical-align: top;
+}
+
+.phui-oi-col2.phui-oi-side-column {
+  width: 200px;
 }
 
 .device-phone .phui-oi-col1,
@@ -422,7 +426,7 @@ ul.phui-oi-icons {
 }
 
 .phui-oi.phui-oi-disabled .phui-oi-attribute,
-.phui-oi.phui-oi-disabled .phui-oi-attribute .phui-icon-view {
+.phui-oi.phui-oi-disabled .phui-oi-attribute > .phui-icon-view {
   color: {$lightgreytext};
 }
 
@@ -449,6 +453,10 @@ ul.phui-oi-list-view .phui-oi-highlighted
 ul.phui-oi-list-view .phui-oi-selected
   .phui-oi-frame {
   border-color: {$sh-blueborder};
+}
+
+.phui-oi-forbidden {
+  background: {$sh-redbackground};
 }
 
 
@@ -659,4 +667,56 @@ ul.phui-oi-list-view .phui-oi-selected
 .device-phone .phui-oi-col2.phui-oi-side-column {
   padding: 0 8px 8px;
   text-align: left;
+}
+
+.phui-oi-col0.phui-oi-checkbox {
+  width: 28px;
+  text-align: center;
+}
+
+.phui-oi-selectable {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* When the list selection state can be toggled on the client (as in the bulk
+  editor), keep the border color consistent to make the interaction feel more
+  robust. */
+ul.phui-oi-list-view .phui-oi-selectable
+  .phui-oi-frame {
+  border-color: {$blueborder};
+}
+
+.differential-revision-size {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: {$lightgreybackground};
+  cursor: pointer;
+}
+
+.differential-revision-size .phui-icon-view {
+  margin: 0 1px 0 1px;
+  font-size: 7px;
+  position: relative;
+  top: -2px;
+  color: {$lightbluetext};
+}
+
+.differential-revision-large {
+  background: {$sh-orangebackground};
+}
+
+/* NOTE: These are intentionally using nonstandard colors, see T13127. */
+
+.differential-revision-large .phui-icon-view {
+  color: #e5ae7e;
+}
+
+.differential-revision-small {
+  background: #f2f7ff;
+}
+
+.differential-revision-small .phui-icon-view {
+  color: #6699ba;
 }

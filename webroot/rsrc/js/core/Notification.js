@@ -26,7 +26,8 @@ JX.install('Notification', {
     _visible : false,
     _hideTimer : null,
     _duration : 12000,
-    _desktopReady : false,
+    _asDesktop : false,
+    _asWeb : true,
     _key : null,
     _title : null,
     _body : null,
@@ -35,6 +36,7 @@ JX.install('Notification', {
 
     show : function() {
       var self = JX.Notification;
+
       if (!this._visible) {
         this._visible = true;
 
@@ -44,7 +46,7 @@ JX.install('Notification', {
 
       if (self.supportsDesktopNotifications() &&
           self.desktopNotificationsEnabled() &&
-          this._desktopReady) {
+          this._asDesktop) {
         // Note: specifying "tag" means that notifications with matching
         // keys will aggregate.
         var n = new window.Notification(this._title, {
@@ -87,8 +89,13 @@ JX.install('Notification', {
       return this;
     },
 
-    setDesktopReady : function(ready) {
-      this._desktopReady = ready;
+    setShowAsWebNotification: function(mode) {
+      this._asWeb = mode;
+      return this;
+    },
+
+    setShowAsDesktopNotification : function(mode) {
+      this._asDesktop = mode;
       return this;
     },
 
@@ -241,6 +248,13 @@ JX.install('Notification', {
 
       var notifications = [];
       for (var ii = 0; ii < self._active.length; ii++) {
+
+        // Don't render this notification if it's not configured to show as
+        // a web notification.
+        if (!self._active[ii]._asWeb) {
+          continue;
+        }
+
         notifications.push(self._active[ii]._getContainer());
         if (!(--limit)) {
           break;

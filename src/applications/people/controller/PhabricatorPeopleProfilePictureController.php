@@ -157,13 +157,10 @@ final class PhabricatorPeopleProfilePictureController
         continue;
       }
 
-      $provider = PhabricatorAuthProvider::getEnabledProviderByKey(
-        $account->getProviderKey());
-      if ($provider) {
-        $tip = pht('Picture From %s', $provider->getProviderName());
-      } else {
-        $tip = pht('Picture From External Account');
-      }
+      $config = $account->getProviderConfig();
+      $provider = $config->getProvider();
+
+      $tip = pht('Picture From %s', $provider->getProviderName());
 
       if ($file->isTransformableImage()) {
         $images[$file->getPHID()] = array(
@@ -190,7 +187,7 @@ final class PhabricatorPeopleProfilePictureController
       $button = javelin_tag(
         'button',
         array(
-          'class' => 'grey profile-image-button',
+          'class' => 'button-grey profile-image-button',
           'sigil' => 'has-tooltip',
           'meta' => array(
             'tip' => $spec['tip'],

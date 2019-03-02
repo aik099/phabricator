@@ -9,6 +9,10 @@ final class PeopleMainMenuBarExtension
     return $viewer->isLoggedIn();
   }
 
+  public function shouldRequireFullSession() {
+    return false;
+  }
+
   public function getExtensionOrder() {
     return 1200;
   }
@@ -39,7 +43,8 @@ final class PeopleMainMenuBarExtension
       ->setIcon($profile_image)
       ->addClass('phabricator-core-user-menu')
       ->setHasCaret(true)
-      ->setNoCSS(true);
+      ->setNoCSS(true)
+      ->setAuralLabel(pht('Account Menu'));
 
     return array(
       $user_menu,
@@ -65,49 +70,50 @@ final class PeopleMainMenuBarExtension
     $view = id(new PhabricatorActionListView())
       ->setViewer($viewer);
 
-    $view->addAction(
-      id(new PhabricatorActionView())
-        ->appendChild($user_view));
+    if ($this->getIsFullSession()) {
+      $view->addAction(
+        id(new PhabricatorActionView())
+          ->appendChild($user_view));
 
-    $view->addAction(
-      id(new PhabricatorActionView())
-        ->setType(PhabricatorActionView::TYPE_DIVIDER));
+      $view->addAction(
+        id(new PhabricatorActionView())
+          ->setType(PhabricatorActionView::TYPE_DIVIDER));
 
-    $view->addAction(
-      id(new PhabricatorActionView())
-        ->setName(pht('Profile'))
-        ->setHref('/p/'.$viewer->getUsername().'/'));
+      $view->addAction(
+        id(new PhabricatorActionView())
+          ->setName(pht('Profile'))
+          ->setHref('/p/'.$viewer->getUsername().'/'));
 
-    $view->addAction(
-      id(new PhabricatorActionView())
-        ->setName(pht('Settings'))
-        ->setHref('/settings/user/'.$viewer->getUsername().'/'));
+      $view->addAction(
+        id(new PhabricatorActionView())
+          ->setName(pht('Settings'))
+          ->setHref('/settings/user/'.$viewer->getUsername().'/'));
 
-    $view->addAction(
-      id(new PhabricatorActionView())
-        ->setName(pht('Manage'))
-        ->setHref('/people/manage/'.$viewer->getID().'/'));
+      $view->addAction(
+        id(new PhabricatorActionView())
+          ->setName(pht('Manage'))
+          ->setHref('/people/manage/'.$viewer->getID().'/'));
 
-    if ($application) {
-      $help_links = $application->getHelpMenuItems($viewer);
-      if ($help_links) {
-        foreach ($help_links as $link) {
-          $view->addAction($link);
+      if ($application) {
+        $help_links = $application->getHelpMenuItems($viewer);
+        if ($help_links) {
+          foreach ($help_links as $link) {
+            $view->addAction($link);
+          }
         }
       }
-    }
 
-    $view->addAction(
-      id(new PhabricatorActionView())
-        ->addSigil('logout-item')
-        ->setType(PhabricatorActionView::TYPE_DIVIDER));
+      $view->addAction(
+        id(new PhabricatorActionView())
+          ->addSigil('logout-item')
+          ->setType(PhabricatorActionView::TYPE_DIVIDER));
+    }
 
     $view->addAction(
       id(new PhabricatorActionView())
         ->setName(pht('Log Out %s', $viewer->getUsername()))
         ->addSigil('logout-item')
         ->setHref('/logout/')
-        ->setColor(PhabricatorActionView::RED)
         ->setWorkflow(true));
 
     return $view;

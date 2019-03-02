@@ -99,9 +99,9 @@ abstract class PhabricatorTypeaheadDatasource extends Phobject {
   }
 
   public function getDatasourceURI() {
-    $uri = new PhutilURI('/typeahead/class/'.get_class($this).'/');
-    $uri->setQueryParams($this->parameters);
-    return (string)$uri;
+    $params = $this->newURIParameters();
+    $uri = new PhutilURI('/typeahead/class/'.get_class($this).'/', $params);
+    return phutil_string_cast($uri);
   }
 
   public function getBrowseURI() {
@@ -109,9 +109,21 @@ abstract class PhabricatorTypeaheadDatasource extends Phobject {
       return null;
     }
 
-    $uri = new PhutilURI('/typeahead/browse/'.get_class($this).'/');
-    $uri->setQueryParams($this->parameters);
-    return (string)$uri;
+    $params = $this->newURIParameters();
+    $uri = new PhutilURI('/typeahead/browse/'.get_class($this).'/', $params);
+    return phutil_string_cast($uri);
+  }
+
+  private function newURIParameters() {
+    if (!$this->parameters) {
+      return array();
+    }
+
+    $map = array(
+      'parameters' => phutil_json_encode($this->parameters),
+    );
+
+    return $map;
   }
 
   abstract public function getPlaceholderText();
@@ -406,7 +418,7 @@ abstract class PhabricatorTypeaheadDatasource extends Phobject {
     $results = $this->evaluateValues($results);
 
     foreach ($evaluate as $result_key => $function) {
-      $function = self::parseFunction($function);
+      $function = $this->parseFunction($function);
       if (!$function) {
         throw new PhabricatorTypeaheadInvalidTokenException();
       }
@@ -451,7 +463,7 @@ abstract class PhabricatorTypeaheadDatasource extends Phobject {
   public static function isFunctionToken($token) {
     // We're looking for a "(" so that a string like "members(q" is identified
     // and parsed as a function call. This allows us to start generating
-    // results immeidately, before the user fully types out "members(quack)".
+    // results immediately, before the user fully types out "members(quack)".
     return (strpos($token, '(') !== false);
   }
 
@@ -459,28 +471,69 @@ abstract class PhabricatorTypeaheadDatasource extends Phobject {
   /**
    * @task functions
    */
-  public function parseFunction($token, $allow_partial = false) {
+  protected function parseFunction($token, $allow_partial = false) {
     $matches = null;
 
     if ($allow_partial) {
-      $ok = preg_match('/^([^(]+)\((.*?)\)?$/', $token, $matches);
+      $ok = preg_match('/^([^(]+)\((.*?)\)?\z/', $token, $matches);
     } else {
-      $ok = preg_match('/^([^(]+)\((.*)\)$/', $token, $matches);
+      $ok = preg_match('/^([^(]+)\((.*)\)\z/', $token, $matches);
     }
 
     if (!$ok) {
+      if (!$allow_partial) {
+        throw new PhabricatorTypeaheadInvalidTokenException(
+          pht(
+            'Unable to parse function and arguments for token "%s".',
+            $token));
+      }
       return null;
     }
 
     $function = trim($matches[1]);
 
     if (!$this->canEvaluateFunction($function)) {
+      if (!$allow_partial) {
+        throw new PhabricatorTypeaheadInvalidTokenException(
+          pht(
+            'This datasource ("%s") can not evaluate the function "%s(...)".',
+            get_class($this),
+            $function));
+      }
+
       return null;
+    }
+
+    // TODO: There is currently no way to quote characters in arguments, so
+    // some characters can't be argument characters. Replace this with a real
+    // parser once we get use cases.
+
+    $argv = $matches[2];
+    $argv = trim($argv);
+    if (!strlen($argv)) {
+      $argv = array();
+    } else {
+      $argv = preg_split('/,/', $matches[2]);
+      foreach ($argv as $key => $arg) {
+        $argv[$key] = trim($arg);
+      }
+    }
+
+    foreach ($argv as $key => $arg) {
+      if (self::isFunctionToken($arg)) {
+        $subfunction = $this->parseFunction($arg);
+
+        $results = $this->evaluateFunction(
+          $subfunction['name'],
+          array($subfunction['argv']));
+
+        $argv[$key] = head($results);
+      }
     }
 
     return array(
       'name' => $function,
-      'argv' => array(trim($matches[2])),
+      'argv' => $argv,
     );
   }
 

@@ -34,6 +34,8 @@ abstract class PhabricatorCustomField extends Phobject {
   const ROLE_CONDUIT                  = 'conduit';
   const ROLE_HERALD                   = 'herald';
   const ROLE_EDITENGINE = 'EditEngine';
+  const ROLE_HERALDACTION = 'herald.action';
+  const ROLE_EXPORT = 'export';
 
 
 /* -(  Building Applications with Custom Fields  )--------------------------- */
@@ -72,9 +74,22 @@ abstract class PhabricatorCustomField extends Phobject {
         $spec,
         $object);
 
+      $fields = self::adjustCustomFieldsForObjectSubtype(
+        $object,
+        $role,
+        $fields);
+
       foreach ($fields as $key => $field) {
+        // NOTE: We perform this filtering in "buildFieldList()", but may need
+        // to filter again after subtype adjustment.
+        if (!$field->isFieldEnabled()) {
+          unset($fields[$key]);
+          continue;
+        }
+
         if (!$field->shouldEnableForRole($role)) {
           unset($fields[$key]);
+          continue;
         }
       }
 
@@ -293,9 +308,13 @@ abstract class PhabricatorCustomField extends Phobject {
         return $this->shouldAppearInTransactionMail();
       case self::ROLE_HERALD:
         return $this->shouldAppearInHerald();
+      case self::ROLE_HERALDACTION:
+        return $this->shouldAppearInHeraldActions();
       case self::ROLE_EDITENGINE:
         return $this->shouldAppearInEditView() ||
                $this->shouldAppearInEditEngine();
+      case self::ROLE_EXPORT:
+        return $this->shouldAppearInDataExport();
       case self::ROLE_DEFAULT:
         return true;
       default:
@@ -1116,6 +1135,21 @@ abstract class PhabricatorCustomField extends Phobject {
       $field->setCustomFieldConduitParameterType($conduit_type);
     }
 
+    $bulk_type = $this->getBulkParameterType();
+    if ($bulk_type) {
+      $field->setCustomFieldBulkParameterType($bulk_type);
+    }
+
+    $comment_action = $this->getCommentAction();
+    if ($comment_action) {
+      $field
+        ->setCustomFieldCommentAction($comment_action)
+        ->setCommentActionLabel(
+          pht(
+            'Change %s',
+            $this->getFieldName()));
+    }
+
     return $field;
   }
 
@@ -1124,20 +1158,42 @@ abstract class PhabricatorCustomField extends Phobject {
       return $this->proxy->newStandardEditField();
     }
 
-    if (!$this->shouldAppearInEditView()) {
-      $conduit_only = true;
+    if ($this->shouldAppearInEditView()) {
+      $form_field = true;
     } else {
-      $conduit_only = false;
+      $form_field = false;
     }
+
+    $bulk_label = $this->getBulkEditLabel();
 
     return $this->newEditField()
       ->setKey($this->getFieldKey())
       ->setEditTypeKey($this->getModernFieldKey())
       ->setLabel($this->getFieldName())
+      ->setBulkEditLabel($bulk_label)
       ->setDescription($this->getFieldDescription())
       ->setTransactionType($this->getApplicationTransactionType())
-      ->setIsConduitOnly($conduit_only)
+      ->setIsFormField($form_field)
       ->setValue($this->getNewValueForApplicationTransactions());
+  }
+
+  protected function getBulkEditLabel() {
+    if ($this->proxy) {
+      return $this->proxy->getBulkEditLabel();
+    }
+
+    return pht('Set "%s" to', $this->getFieldName());
+  }
+
+  public function getBulkParameterType() {
+    return $this->newBulkParameterType();
+  }
+
+  protected function newBulkParameterType() {
+    if ($this->proxy) {
+      return $this->proxy->newBulkParameterType();
+    }
+    return null;
   }
 
   protected function getHTTPParameterType() {
@@ -1332,6 +1388,46 @@ abstract class PhabricatorCustomField extends Phobject {
   }
 
 
+/* -(  Data Export  )-------------------------------------------------------- */
+
+
+  public function shouldAppearInDataExport() {
+    if ($this->proxy) {
+      return $this->proxy->shouldAppearInDataExport();
+    }
+
+    try {
+      $this->newExportFieldType();
+      return true;
+    } catch (PhabricatorCustomFieldImplementationIncompleteException $ex) {
+      return false;
+    }
+  }
+
+  public function newExportField() {
+    if ($this->proxy) {
+      return $this->proxy->newExportField();
+    }
+
+    return $this->newExportFieldType()
+      ->setLabel($this->getFieldName());
+  }
+
+  public function newExportData() {
+    if ($this->proxy) {
+      return $this->proxy->newExportData();
+    }
+    throw new PhabricatorCustomFieldImplementationIncompleteException($this);
+  }
+
+  protected function newExportFieldType() {
+    if ($this->proxy) {
+      return $this->proxy->newExportFieldType();
+    }
+    throw new PhabricatorCustomFieldImplementationIncompleteException($this);
+  }
+
+
 /* -(  Conduit  )------------------------------------------------------------ */
 
 
@@ -1382,6 +1478,17 @@ abstract class PhabricatorCustomField extends Phobject {
   protected function newConduitEditParameterType() {
     if ($this->proxy) {
       return $this->proxy->newConduitEditParameterType();
+    }
+    return null;
+  }
+
+  public function getCommentAction() {
+    return $this->newCommentAction();
+  }
+
+  protected function newCommentAction() {
+    if ($this->proxy) {
+      return $this->proxy->newCommentAction();
     }
     return null;
   }
@@ -1475,5 +1582,131 @@ abstract class PhabricatorCustomField extends Phobject {
     return null;
   }
 
+
+  public function shouldAppearInHeraldActions() {
+    if ($this->proxy) {
+      return $this->proxy->shouldAppearInHeraldActions();
+    }
+    return false;
+  }
+
+
+  public function getHeraldActionName() {
+    if ($this->proxy) {
+      return $this->proxy->getHeraldActionName();
+    }
+
+    return null;
+  }
+
+
+  public function getHeraldActionStandardType() {
+    if ($this->proxy) {
+      return $this->proxy->getHeraldActionStandardType();
+    }
+
+    return null;
+  }
+
+
+  public function getHeraldActionDescription($value) {
+    if ($this->proxy) {
+      return $this->proxy->getHeraldActionDescription($value);
+    }
+
+    return null;
+  }
+
+
+  public function getHeraldActionEffectDescription($value) {
+    if ($this->proxy) {
+      return $this->proxy->getHeraldActionEffectDescription($value);
+    }
+
+    return null;
+  }
+
+
+  public function getHeraldActionDatasource() {
+    if ($this->proxy) {
+      return $this->proxy->getHeraldActionDatasource();
+    }
+
+    return null;
+  }
+
+  private static function adjustCustomFieldsForObjectSubtype(
+    PhabricatorCustomFieldInterface $object,
+    $role,
+    array $fields) {
+    assert_instances_of($fields, __CLASS__);
+
+    // We only apply subtype adjustment for some roles. For example, when
+    // writing Herald rules or building a Search interface, we always want to
+    // show all the fields in their default state, so we do not apply any
+    // adjustments.
+    $subtype_roles = array(
+      self::ROLE_EDITENGINE,
+      self::ROLE_VIEW,
+    );
+
+    $subtype_roles = array_fuse($subtype_roles);
+    if (!isset($subtype_roles[$role])) {
+      return $fields;
+    }
+
+    // If the object doesn't support subtypes, we can't possibly make
+    // any adjustments based on subtype.
+    if (!($object instanceof PhabricatorEditEngineSubtypeInterface)) {
+      return $fields;
+    }
+
+    $subtype_map = $object->newEditEngineSubtypeMap();
+    $subtype_key = $object->getEditEngineSubtype();
+    $subtype_object = $subtype_map->getSubtype($subtype_key);
+
+    $map = array();
+    foreach ($fields as $field) {
+      $modern_key = $field->getModernFieldKey();
+      if (!strlen($modern_key)) {
+        continue;
+      }
+
+      $map[$modern_key] = $field;
+    }
+
+    foreach ($map as $field_key => $field) {
+      // For now, only support overriding standard custom fields. In the
+      // future there's no technical or product reason we couldn't let you
+      // override (some properites of) other fields like "Title", but they
+      // don't usually support appropriate "setX()" methods today.
+      if (!($field instanceof PhabricatorStandardCustomField)) {
+        // For fields that are proxies on top of StandardCustomField, which
+        // is how most application custom fields work today, we can reconfigure
+        // the proxied field instead.
+        $field = $field->getProxy();
+        if (!$field || !($field instanceof PhabricatorStandardCustomField)) {
+          continue;
+        }
+      }
+
+      $subtype_config = $subtype_object->getSubtypeFieldConfiguration(
+        $field_key);
+
+      if (!$subtype_config) {
+        continue;
+      }
+
+      if (isset($subtype_config['disabled'])) {
+        $field->setIsEnabled(!$subtype_config['disabled']);
+      }
+
+      if (isset($subtype_config['name'])) {
+        $field->setFieldName($subtype_config['name']);
+      }
+    }
+
+    return $fields;
+  }
 
 }

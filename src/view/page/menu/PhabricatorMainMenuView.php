@@ -23,15 +23,29 @@ final class PhabricatorMainMenuView extends AphrontView {
     return $this->controller;
   }
 
-  private function getFaviconURI($type = null) {
-    switch ($type) {
-      case 'message':
-        return celerity_get_resource_uri('/rsrc/favicons/favicon-message.ico');
-      case 'mention':
-        return celerity_get_resource_uri('/rsrc/favicons/favicon-mention.ico');
-      default:
-        return celerity_get_resource_uri('/rsrc/favicons/favicon.ico');
-    }
+  private static function getFavicons() {
+    $refs = array();
+
+    $refs['favicon'] = id(new PhabricatorFaviconRef())
+      ->setWidth(64)
+      ->setHeight(64);
+
+    $refs['message_favicon'] = id(new PhabricatorFaviconRef())
+      ->setWidth(64)
+      ->setHeight(64)
+      ->setEmblems(
+        array(
+          'dot-pink',
+          null,
+          null,
+          null,
+        ));
+
+    id(new PhabricatorFaviconRefQuery())
+      ->withRefs($refs)
+      ->execute();
+
+    return mpull($refs, 'getURI');
   }
 
   public function render() {
@@ -46,7 +60,9 @@ final class PhabricatorMainMenuView extends AphrontView {
     $app_button = '';
     $aural = null;
 
-    if ($viewer->isLoggedIn() && $viewer->isUserActivated()) {
+    $is_full = $this->isFullSession($viewer);
+
+    if ($is_full) {
       list($menu, $dropdowns, $aural) = $this->renderNotificationMenu();
       if (array_filter($menu)) {
         $alerts[] = $menu;
@@ -54,14 +70,18 @@ final class PhabricatorMainMenuView extends AphrontView {
       $menu_bar = array_merge($menu_bar, $dropdowns);
       $app_button = $this->renderApplicationMenuButton();
       $search_button = $this->renderSearchMenuButton($header_id);
-    } else {
+    } else if (!$viewer->isLoggedIn()) {
       $app_button = $this->renderApplicationMenuButton();
       if (PhabricatorEnv::getEnvConfig('policy.allow-public')) {
         $search_button = $this->renderSearchMenuButton($header_id);
       }
     }
 
-    $search_menu = $this->renderPhabricatorSearchMenu();
+    if ($search_button) {
+      $search_menu = $this->renderPhabricatorSearchMenu();
+    } else {
+      $search_menu = null;
+    }
 
     if ($alerts) {
       $alerts = javelin_tag(
@@ -84,7 +104,9 @@ final class PhabricatorMainMenuView extends AphrontView {
 
     $extensions = PhabricatorMainMenuBarExtension::getAllEnabledExtensions();
     foreach ($extensions as $extension) {
-      $extension->setViewer($viewer);
+      $extension
+        ->setViewer($viewer)
+        ->setIsFullSession($is_full);
 
       $controller = $this->getController();
       if ($controller) {
@@ -92,6 +114,14 @@ final class PhabricatorMainMenuView extends AphrontView {
         $application = $controller->getCurrentApplication();
         if ($application) {
           $extension->setApplication($application);
+        }
+      }
+    }
+
+    if (!$is_full) {
+      foreach ($extensions as $key => $extension) {
+        if ($extension->shouldRequireFullSession()) {
+          unset($extensions[$key]);
         }
       }
     }
@@ -202,7 +232,8 @@ final class PhabricatorMainMenuView extends AphrontView {
       ->addClass('phabricator-core-user-menu')
       ->addClass('phabricator-core-user-mobile-menu')
       ->setNoCSS(true)
-      ->setDropdownMenu($dropdown);
+      ->setDropdownMenu($dropdown)
+      ->setAuralLabel(pht('Page Menu'));
   }
 
   private function renderApplicationMenu() {
@@ -412,10 +443,7 @@ final class PhabricatorMainMenuView extends AphrontView {
           'countType'   => $conpherence_data['countType'],
           'countNumber' => $message_count_number,
           'unreadClass' => 'message-unread',
-          'favicon'     => $this->getFaviconURI('default'),
-          'message_favicon' => $this->getFaviconURI('message'),
-          'mention_favicon' => $this->getFaviconURI('mention'),
-        ));
+        ) + self::getFavicons());
 
       $message_notification_dropdown = javelin_tag(
         'div',
@@ -493,10 +521,7 @@ final class PhabricatorMainMenuView extends AphrontView {
           'countType'   => $notification_data['countType'],
           'countNumber' => $count_number,
           'unreadClass' => 'alert-unread',
-          'favicon'     => $this->getFaviconURI('default'),
-          'message_favicon' => $this->getFaviconURI('message'),
-          'mention_favicon' => $this->getFaviconURI('mention'),
-        ));
+        ) + self::getFavicons());
 
       $notification_dropdown = javelin_tag(
         'div',
@@ -578,10 +603,7 @@ final class PhabricatorMainMenuView extends AphrontView {
             'countType'   => null,
             'countNumber' => null,
             'unreadClass' => 'setup-unread',
-            'favicon'     => $this->getFaviconURI('default'),
-            'message_favicon' => $this->getFaviconURI('message'),
-            'mention_favicon' => $this->getFaviconURI('mention'),
-          ));
+          ) + self::getFavicons());
 
         $setup_notification_dropdown = javelin_tag(
           'div',
@@ -675,6 +697,40 @@ final class PhabricatorMainMenuView extends AphrontView {
       $dropdowns,
       $aural,
     );
+  }
+
+  private function isFullSession(PhabricatorUser $viewer) {
+    if (!$viewer->isLoggedIn()) {
+      return false;
+    }
+
+    if (!$viewer->isUserActivated()) {
+      return false;
+    }
+
+    if (!$viewer->hasSession()) {
+      return false;
+    }
+
+    $session = $viewer->getSession();
+    if ($session->getIsPartial()) {
+      return false;
+    }
+
+    if (!$session->getSignedLegalpadDocuments()) {
+      return false;
+    }
+
+    $mfa_key = 'security.require-multi-factor-auth';
+    $need_mfa = PhabricatorEnv::getEnvConfig($mfa_key);
+    if ($need_mfa) {
+      $have_mfa = $viewer->getIsEnrolledInMultiFactor();
+      if (!$have_mfa) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
 }

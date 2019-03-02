@@ -13,6 +13,10 @@ final class DiffusionRepositorySymbolsManagementPanel
     return 900;
   }
 
+  public function getManagementPanelGroupKey() {
+    return DiffusionRepositoryManagementIntegrationsPanelGroup::PANELGROUPKEY;
+  }
+
   public function getManagementPanelIcon() {
     $repository = $this->getRepository();
 
@@ -37,7 +41,7 @@ final class DiffusionRepositorySymbolsManagementPanel
   public function buildManagementPanelCurtain() {
     $repository = $this->getRepository();
     $viewer = $this->getViewer();
-    $action_list = $this->getNewActionList();
+    $action_list = $this->newActionList();
 
     $can_edit = PhabricatorPolicyFilter::hasCapability(
       $viewer,
@@ -54,7 +58,8 @@ final class DiffusionRepositorySymbolsManagementPanel
         ->setDisabled(!$can_edit)
         ->setWorkflow(!$can_edit));
 
-    return $this->getNewCurtainView($action_list);
+    return $this->newCurtainView()
+      ->setActionList($action_list);
   }
 
   public function buildManagementPanelContent() {

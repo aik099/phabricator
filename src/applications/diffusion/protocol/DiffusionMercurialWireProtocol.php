@@ -23,12 +23,16 @@ final class DiffusionMercurialWireProtocol extends Phobject {
       'listkeys' => array('namespace'),
       'lookup' => array('key'),
       'pushkey' => array('namespace', 'key', 'old', 'new'),
+      'protocaps' => array('caps'),
       'stream_out' => array(''),
       'unbundle' => array('heads'),
     );
 
     if (!isset($commands[$command])) {
-      throw new Exception(pht("Unknown Mercurial command '%s!", $command));
+      throw new Exception(
+        pht(
+          'Unknown Mercurial command "%s"!',
+          $command));
     }
 
     return $commands[$command];
@@ -49,6 +53,7 @@ final class DiffusionMercurialWireProtocol extends Phobject {
       'known' => true,
       'listkeys' => true,
       'lookup' => true,
+      'protocaps' => true,
       'stream_out' => true,
     );
 
@@ -101,18 +106,18 @@ final class DiffusionMercurialWireProtocol extends Phobject {
 
   /** If the server version is running 3.4+ it will respond
    * with 'bundle2' capability in the format of "bundle2=(url-encoding)".
-   * Until we maange to properly package up bundles to send back we
+   * Until we manage to properly package up bundles to send back we
    * disallow the client from knowing we speak bundle2 by removing it
    * from the capabilities listing.
    *
-   * The format of the capabilties string is: "a space separated list
+   * The format of the capabilities string is: "a space separated list
    * of strings representing what commands the server supports"
    * @link https://www.mercurial-scm.org/wiki/CommandServer#Protocol
    *
    * @param string  $capabilities - The string of capabilities to
    *   strip the bundle2 capability from. This is expected to be
    *   the space-separated list of strings resulting from the
-   *   querying the 'capabilties' command.
+   *   querying the 'capabilities' command.
    *
    * @return string  The resulting space-separated list of capabilities
    *   which no longer contains the 'bundle2' capability. This is meant

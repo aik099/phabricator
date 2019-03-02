@@ -13,6 +13,10 @@ final class DiffusionRepositoryAutomationManagementPanel
     return 800;
   }
 
+  public function getManagementPanelGroupKey() {
+    return DiffusionRepositoryManagementBuildsPanelGroup::PANELGROUPKEY;
+  }
+
   public function shouldEnableForRepository(
     PhabricatorRepository $repository) {
     return $repository->isGit();
@@ -49,7 +53,7 @@ final class DiffusionRepositoryAutomationManagementPanel
   public function buildManagementPanelCurtain() {
     $repository = $this->getRepository();
     $viewer = $this->getViewer();
-    $action_list = $this->getNewActionList();
+    $action_list = $this->newActionList();
 
     $can_edit = PhabricatorPolicyFilter::hasCapability(
       $viewer,
@@ -77,7 +81,8 @@ final class DiffusionRepositoryAutomationManagementPanel
         ->setDisabled(!$can_test)
         ->setHref($test_uri));
 
-    return $this->getNewCurtainView($action_list);
+    return $this->newCurtainView()
+      ->setActionList($action_list);
   }
 
   public function buildManagementPanelContent() {

@@ -208,6 +208,9 @@ abstract class PhabricatorOAuth1AuthProvider
     parent::willRenderLinkedAccount($viewer, $item, $account);
   }
 
+  protected function getContentSecurityPolicyFormActions() {
+    return $this->getAdapter()->getContentSecurityPolicyFormActions();
+  }
 
 /* -(  Temporary Secrets  )-------------------------------------------------- */
 
@@ -270,7 +273,7 @@ abstract class PhabricatorOAuth1AuthProvider
   }
 
   private function getHandshakeTokenKeyFromClientCode($client_code) {
-    // NOTE: This is very slightly coersive since the TemporaryToken table
+    // NOTE: This is very slightly coercive since the TemporaryToken table
     // expects an "objectPHID" as an identifier, but nothing about the storage
     // is bound to PHIDs.
 

@@ -54,13 +54,22 @@ final class DiffusionSearchQueryConduitAPIMethod
     $limit = $request->getValue('limit');
     $offset = $request->getValue('offset');
 
+    // Starting with Git 2.16.0, Git assumes passing an empty argument is
+    // an error and recommends you pass "." instead.
+    if (!strlen($path)) {
+      $path = '.';
+    }
+
     $results = array();
     $future = $repository->getLocalCommandFuture(
       // NOTE: --perl-regexp is available only with libpcre compiled in.
-      'grep --extended-regexp --null -n --no-color -e %s %s -- %s',
-      $grep,
+      'grep --extended-regexp --null -n --no-color -f - %s -- %s',
       $drequest->getStableCommit(),
       $path);
+
+    // NOTE: We're writing the pattern on stdin to avoid issues with UTF8
+    // being mangled by the shell. See T12807.
+    $future->write($grep);
 
     $binary_pattern = '/Binary file [^:]*:(.+) matches/';
     $lines = new LinesOfALargeExecFuture($future);
@@ -94,7 +103,7 @@ final class DiffusionSearchQueryConduitAPIMethod
 
     $results = array();
     $future = $repository->getLocalCommandFuture(
-      'grep --rev %s --print0 --line-number %s %s',
+      'grep --rev %s --print0 --line-number -- %s %s',
       hgsprintf('ancestors(%s)', $drequest->getStableCommit()),
       $grep,
       $path);

@@ -309,13 +309,11 @@ final class PhabricatorCalendarEventEditor
   }
 
   protected function buildMailTemplate(PhabricatorLiskDAO $object) {
-    $id = $object->getID();
     $name = $object->getName();
     $monogram = $object->getMonogram();
 
     return id(new PhabricatorMetaMTAMail())
-      ->setSubject("{$monogram}: {$name}")
-      ->addHeader('Thread-Topic', $monogram);
+      ->setSubject("{$monogram}: {$name}");
   }
 
   protected function buildMailBody(
@@ -366,7 +364,7 @@ final class PhabricatorCalendarEventEditor
       ->setEvents(array($event))
       ->writeICSDocument();
 
-    $ics_attachment = new PhabricatorMetaMTAAttachment(
+    $ics_attachment = new PhabricatorMailAttachment(
       $ics_data,
       $event->getICSFilename(),
       'text/calendar');

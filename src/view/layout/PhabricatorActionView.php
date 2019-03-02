@@ -25,6 +25,7 @@ final class PhabricatorActionView extends AphrontView {
   const TYPE_DIVIDER  = 'type-divider';
   const TYPE_LABEL  = 'label';
   const RED = 'action-item-red';
+  const GREEN = 'action-item-green';
 
   public function setSelected($selected) {
     $this->selected = $selected;
@@ -117,6 +118,11 @@ final class PhabricatorActionView extends AphrontView {
 
   public function getOpenInNewWindow() {
     return $this->openInNewWindow;
+  }
+
+  public function setID($id) {
+    $this->id = $id;
+    return $this;
   }
 
   public function getID() {
@@ -250,8 +256,10 @@ final class PhabricatorActionView extends AphrontView {
       } else {
         if ($this->getOpenInNewWindow()) {
           $target = '_blank';
+          $rel = 'noreferrer';
         } else {
           $target = null;
+          $rel = null;
         }
 
         if ($this->submenu) {
@@ -272,6 +280,7 @@ final class PhabricatorActionView extends AphrontView {
             'href'  => $this->getHref(),
             'class' => 'phabricator-action-view-item',
             'target' => $target,
+            'rel' => $rel,
             'sigil' => $sigils,
             'meta' => $this->metadata,
           ),

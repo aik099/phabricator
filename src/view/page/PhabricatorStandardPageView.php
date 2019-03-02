@@ -19,6 +19,7 @@ final class PhabricatorStandardPageView extends PhabricatorBarePageView
   private $showFooter = true;
   private $showDurableColumn = true;
   private $quicksandConfig = array();
+  private $tabs;
   private $crumbs;
   private $navigation;
 
@@ -159,6 +160,17 @@ final class PhabricatorStandardPageView extends PhabricatorBarePageView
     return $this->crumbs;
   }
 
+  public function setTabs(PHUIListView $tabs) {
+    $tabs->setType(PHUIListView::TABBAR_LIST);
+    $tabs->addClass('phabricator-standard-page-tabs');
+    $this->tabs = $tabs;
+    return $this;
+  }
+
+  public function getTabs() {
+    return $this->tabs;
+  }
+
   public function setNavigation(AphrontSideNavFilterView $navigation) {
     $this->navigation = $navigation;
     return $this;
@@ -260,42 +272,14 @@ final class PhabricatorStandardPageView extends PhabricatorBarePageView
               'doc_href' => $doc_href,
               'message' => pht(
                 'Phabricator thinks you are using %s, but your '.
-                'client is conviced that it is using %s. This is a serious '.
+                'client is convinced that it is using %s. This is a serious '.
                 'misconfiguration with subtle, but significant, consequences.',
                 $server_protocol, $client_protocol),
             ));
         }
       }
 
-      $icon = id(new PHUIIconView())
-        ->setIcon('fa-download')
-        ->addClass('phui-icon-circle-icon');
-      $lightbox_id = celerity_generate_unique_node_id();
-      $download_form = phabricator_form(
-        $user,
-        array(
-          'action' => '#',
-          'method' => 'POST',
-          'class'  => 'lightbox-download-form',
-          'sigil'  => 'download lightbox-download-submit',
-          'id'     => 'lightbox-download-form',
-        ),
-        phutil_tag(
-          'a',
-          array(
-            'class' => 'lightbox-download phui-icon-circle hover-green',
-            'href' => '#',
-          ),
-          array(
-            $icon,
-          )));
-
-      Javelin::initBehavior(
-        'lightbox-attachments',
-        array(
-          'lightbox_id'     => $lightbox_id,
-          'downloadForm'    => $download_form,
-        ));
+      Javelin::initBehavior('lightbox-attachments');
     }
 
     Javelin::initBehavior('aphront-form-disable-on-submit');
@@ -346,9 +330,6 @@ final class PhabricatorStandardPageView extends PhabricatorBarePageView
       Javelin::initBehavior(
         'dark-console',
         $this->getConsoleConfig());
-
-      // Change this to initBehavior when there is some behavior to initialize
-      require_celerity_resource('javelin-behavior-error-log');
     }
 
     if ($user) {
@@ -528,6 +509,7 @@ final class PhabricatorStandardPageView extends PhabricatorBarePageView
     $footer = $this->renderFooter();
 
     $nav = $this->getNavigation();
+    $tabs = $this->getTabs();
     if ($nav) {
       $crumbs = $this->getCrumbs();
       if ($crumbs) {
@@ -541,7 +523,15 @@ final class PhabricatorStandardPageView extends PhabricatorBarePageView
 
       $crumbs = $this->getCrumbs();
       if ($crumbs) {
+        if ($this->getTabs()) {
+          $crumbs->setBorder(true);
+        }
         $content[] = $crumbs;
+      }
+
+      $tabs = $this->getTabs();
+      if ($tabs) {
+        $content[] = $tabs;
       }
 
       $content[] = $body;
@@ -587,12 +577,15 @@ final class PhabricatorStandardPageView extends PhabricatorBarePageView
         Javelin::initBehavior(
           'aphlict-listen',
           array(
-            'websocketURI'  => (string)$client_uri,
+            'websocketURI' => (string)$client_uri,
           ) + $this->buildAphlictListenConfigData());
+
+        CelerityAPI::getStaticResourceResponse()
+          ->addContentSecurityPolicyURI('connect-src', $client_uri);
       }
     }
 
-    $tail[] = $response->renderHTMLFooter();
+    $tail[] = $response->renderHTMLFooter($this->getFrameable());
 
     return $tail;
   }
@@ -839,6 +832,19 @@ final class PhabricatorStandardPageView extends PhabricatorBarePageView
       $blacklist[] = $application->getQuicksandURIPatternBlacklist();
     }
 
+    // See T4340. Currently, Phortune and Auth both require pulling in external
+    // Javascript (for Stripe card management and Recaptcha, respectively).
+    // This can put us in a position where the user loads a page with a
+    // restrictive Content-Security-Policy, then uses Quicksand to navigate to
+    // a page which needs to load external scripts. For now, just blacklist
+    // these entire applications since we aren't giving up anything
+    // significant by doing so.
+
+    $blacklist[] = array(
+      '/phortune/.*',
+      '/auth/.*',
+    );
+
     return array_mergev($blacklist);
   }
 
@@ -882,6 +888,7 @@ final class PhabricatorStandardPageView extends PhabricatorBarePageView
         ->setContent($content);
     } else {
       $content = $this->render();
+
       $response = id(new AphrontWebpageResponse())
         ->setContent($content)
         ->setFrameable($this->getFrameable());

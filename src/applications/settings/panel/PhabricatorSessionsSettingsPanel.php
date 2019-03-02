@@ -10,6 +10,10 @@ final class PhabricatorSessionsSettingsPanel extends PhabricatorSettingsPanel {
     return pht('Sessions');
   }
 
+  public function getPanelMenuIcon() {
+    return 'fa-user';
+  }
+
   public function getPanelGroupKey() {
     return PhabricatorSettingsLogsPanelGroup::PANELGROUPKEY;
   }
@@ -44,8 +48,9 @@ final class PhabricatorSessionsSettingsPanel extends PhabricatorSettingsPanel {
       ->withPHIDs($identity_phids)
       ->execute();
 
-    $current_key = PhabricatorHash::weakDigest(
-      $request->getCookie(PhabricatorCookies::COOKIE_SESSION));
+    $current_key = PhabricatorAuthSession::newSessionDigest(
+      new PhutilOpaqueEnvelope(
+        $request->getCookie(PhabricatorCookies::COOKIE_SESSION)));
 
     $rows = array();
     $rowc = array();
@@ -58,7 +63,7 @@ final class PhabricatorSessionsSettingsPanel extends PhabricatorSettingsPanel {
         $button = phutil_tag(
           'a',
           array(
-            'class' => 'small grey button disabled',
+            'class' => 'small button button-grey disabled',
           ),
           pht('Current'));
       } else {
@@ -67,7 +72,7 @@ final class PhabricatorSessionsSettingsPanel extends PhabricatorSettingsPanel {
           'a',
           array(
             'href' => '/auth/session/terminate/'.$session->getID().'/',
-            'class' => 'small grey button',
+            'class' => 'small button button-grey',
             'sigil' => 'workflow',
           ),
           pht('Terminate'));
@@ -112,33 +117,27 @@ final class PhabricatorSessionsSettingsPanel extends PhabricatorSettingsPanel {
         'action',
       ));
 
-    $terminate_button = id(new PHUIButtonView())
+    $buttons = array();
+    $buttons[] = id(new PHUIButtonView())
+      ->setTag('a')
+      ->setIcon('fa-warning')
       ->setText(pht('Terminate All Sessions'))
       ->setHref('/auth/session/terminate/all/')
-      ->setTag('a')
       ->setWorkflow(true)
-      ->setIcon('fa-exclamation-triangle');
-
-    $header = id(new PHUIHeaderView())
-      ->setHeader(pht('Active Login Sessions'))
-      ->addActionLink($terminate_button);
+      ->setColor(PHUIButtonView::RED);
 
     $hisec = ($viewer->getSession()->getHighSecurityUntil() - time());
     if ($hisec > 0) {
-      $hisec_button = id(new PHUIButtonView())
+      $buttons[] = id(new PHUIButtonView())
+        ->setTag('a')
+        ->setIcon('fa-lock')
         ->setText(pht('Leave High Security'))
         ->setHref('/auth/session/downgrade/')
-        ->setTag('a')
         ->setWorkflow(true)
-        ->setIcon('fa-lock');
-      $header->addActionLink($hisec_button);
+        ->setColor(PHUIButtonView::RED);
     }
 
-    $panel = id(new PHUIObjectBoxView())
-      ->setHeader($header)
-      ->setTable($table);
-
-    return $panel;
+    return $this->newBox(pht('Active Login Sessions'), $table, $buttons);
   }
 
 }

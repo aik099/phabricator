@@ -17,6 +17,8 @@
 // subclasses of PhabricatorConfigSiteSource to read it and build an instance
 // environment.
 
+$hook_start = microtime(true);
+
 if ($argc > 1) {
   $context = $argv[1];
   $context = explode(':', $context, 2);
@@ -35,7 +37,8 @@ if ($argc < 2) {
   throw new Exception(pht('usage: commit-hook <repository>'));
 }
 
-$engine = new DiffusionCommitHookEngine();
+$engine = id(new DiffusionCommitHookEngine())
+  ->setStartTime($hook_start);
 
 $repository = id(new PhabricatorRepositoryQuery())
   ->setViewer(PhabricatorUser::getOmnipotentUser())
@@ -48,8 +51,13 @@ if (!$repository) {
 }
 
 if (!$repository->isHosted()) {
-  // This should be redundant, but double check just in case.
-  throw new Exception(pht('Repository "%s" is not hosted!', $argv[1]));
+  // In Mercurial, the "pretxnchangegroup" hook fires for both pulls and
+  // pushes. Normally we only install the hook for hosted repositories, but
+  // if a hosted repository is later converted into an observed repository we
+  // can end up with an observed repository that has the hook installed.
+  // If we're running hooks from an observed repository, just exit without
+  // taking action. For more discussion, see PHI24.
+  return 0;
 }
 
 $engine->setRepository($repository);
@@ -182,6 +190,11 @@ if (strlen($remote_protocol)) {
   $engine->setRemoteProtocol($remote_protocol);
 }
 
+$request_identifier = getenv(DiffusionCommitHookEngine::ENV_REQUEST);
+if (strlen($request_identifier)) {
+  $engine->setRequestIdentifier($request_identifier);
+}
+
 try {
   $err = $engine->execute();
 } catch (DiffusionCommitHookRejectException $ex) {
@@ -194,23 +207,23 @@ try {
 +---------------------------------------------------------------+
 |      * * * PUSH REJECTED BY EVIL DRAGON BUREAUCRATS * * *     |
 +---------------------------------------------------------------+
-            \
-             \                    ^    /^
-              \                  / \  // \
-               \   |\___/|      /   \//  .\
-                \  /V  V  \__  /    //  | \ \           *----*
-                  /     /  \/_/    //   |  \  \          \   |
-                  @___@`    \/_   //    |   \   \         \/\ \
-                 0/0/|       \/_ //     |    \    \         \  \
-             0/0/0/0/|        \///      |     \     \       |  |
-          0/0/0/0/0/_|_ /   (  //       |      \     _\     |  /
-       0/0/0/0/0/0/`/,_ _ _/  ) ; -.    |    _ _\.-~       /   /
-                   ,-}        _      *-.|.-~-.           .~    ~
-  \     \__/        `/\      /                 ~-. _ .-~      /
-   \____(Oo)           *.   }            {                   /
-   (    (--)          .----~-.\        \-`                 .~
-   //__\\\\  \ DENIED!  ///.----..<        \             _ -~
-  //    \\\\               ///-._ _ _ _ _ _ _{^ - - - - ~
+             \
+              \                    ^    /^
+               \                  / \  // \
+                \   |\___/|      /   \//  .\
+                 \  /V  V  \__  /    //  | \ \           *----*
+                   /     /  \/_/    //   |  \  \          \   |
+                   @___@`    \/_   //    |   \   \         \/\ \
+                  0/0/|       \/_ //     |    \    \         \  \
+              0/0/0/0/|        \///      |     \     \       |  |
+           0/0/0/0/0/_|_ /   (  //       |      \     _\     |  /
+        0/0/0/0/0/0/`/,_ _ _/  ) ; -.    |    _ _\.-~       /   /
+                    ,-}        _      *-.|.-~-.           .~    ~
+  *     \__/         `/\      /                 ~-. _ .-~      /
+   \____(Oo)            *.   }            {                   /
+   (    (..)           .----~-.\        \-`                 .~
+   //___\\\\  \ DENIED!  ///.----..<        \             _ -~
+  //     \\\\                ///-._ _ _ _ _ _ _{^ - - - - ~
 
 EOTXT
 );

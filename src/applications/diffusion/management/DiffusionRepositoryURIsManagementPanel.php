@@ -10,7 +10,7 @@ final class DiffusionRepositoryURIsManagementPanel
   }
 
   public function getManagementPanelIcon() {
-    return 'fa-cogs';
+    return 'fa-globe';
   }
 
   public function getManagementPanelOrder() {
@@ -20,7 +20,7 @@ final class DiffusionRepositoryURIsManagementPanel
   public function buildManagementPanelCurtain() {
     $repository = $this->getRepository();
     $viewer = $this->getViewer();
-    $action_list = $this->getNewActionList();
+    $action_list = $this->newActionList();
 
     $can_edit = PhabricatorPolicyFilter::hasCapability(
       $viewer,
@@ -43,7 +43,8 @@ final class DiffusionRepositoryURIsManagementPanel
         ->setHref($doc_href)
         ->setName(pht('URI Documentation')));
 
-    return $this->getNewCurtainView($action_list);
+    return $this->newCurtainView()
+      ->setActionList($action_list);
   }
 
   public function buildManagementPanelContent() {
@@ -151,8 +152,7 @@ final class DiffusionRepositoryURIsManagementPanel
       ->setSeverity(PHUIInfoView::SEVERITY_NOTICE)
       ->setErrors($messages);
 
-    $box = $this->newBox(pht('Repository URIs'), null);
-    $box->setTable($table);
+    $box = $this->newBox(pht('Repository URIs'), $table);
 
     return array($info_view, $box);
   }

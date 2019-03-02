@@ -112,17 +112,6 @@ if ($is_new) {
   $create_email = $email;
 }
 
-$changed_pass = false;
-// This disables local echo, so the user's password is not shown as they type
-// it.
-phutil_passthru('stty -echo');
-$password = phutil_console_prompt(
-  pht('Enter a password for this user [blank to leave unchanged]:'));
-phutil_passthru('stty echo');
-if (strlen($password)) {
-  $changed_pass = $password;
-}
-
 $is_system_agent = $user->getIsSystemAgent();
 $set_system_agent = phutil_console_confirm(
   pht('Is this user a bot?'),
@@ -158,10 +147,6 @@ printf($tpl, pht('Real Name'), $original->getRealName(), $user->getRealName());
 if ($is_new) {
   printf($tpl, pht('Email'), '', $create_email);
 }
-printf($tpl, pht('Password'), null,
-  ($changed_pass !== false)
-    ? pht('Updated')
-    : pht('Unchanged'));
 
 printf(
   $tpl,
@@ -215,13 +200,28 @@ $user->openTransaction();
     $editor->updateUser($user, $verify_email);
   }
 
-  $editor->makeAdminUser($user, $set_admin);
   $editor->makeSystemAgentUser($user, $set_system_agent);
 
-  if ($changed_pass !== false) {
-    $envelope = new PhutilOpaqueEnvelope($changed_pass);
-    $editor->changePassword($user, $envelope);
-  }
+  $xactions = array();
+  $xactions[] = id(new PhabricatorUserTransaction())
+    ->setTransactionType(
+      PhabricatorUserEmpowerTransaction::TRANSACTIONTYPE)
+    ->setNewValue($set_admin);
+
+  $actor = PhabricatorUser::getOmnipotentUser();
+  $content_source = PhabricatorContentSource::newForSource(
+    PhabricatorConsoleContentSource::SOURCECONST);
+
+  $people_application_phid = id(new PhabricatorPeopleApplication())->getPHID();
+
+  $transaction_editor = id(new PhabricatorUserTransactionEditor())
+    ->setActor($actor)
+    ->setActingAsPHID($people_application_phid)
+    ->setContentSource($content_source)
+    ->setContinueOnNoEffect(true)
+    ->setContinueOnMissingFields(true);
+
+  $transaction_editor->applyTransactions($user, $xactions);
 
 $user->saveTransaction();
 

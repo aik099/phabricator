@@ -4,12 +4,13 @@
 
 .aphront-table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .aphront-table-view {
   width: 100%;
   border-collapse:  collapse;
-  background: #fff;
+  background: {$page.content};
   border: 1px solid {$lightblueborder};
   border-bottom: 1px solid {$blueborder};
 }
@@ -24,7 +25,6 @@
 
 .aphront-table-notice {
   padding: 12px 16px;
-  font-size: {$normalfontsize};
   color: {$darkbluetext};
   border-bottom: 1px solid {$thinblueborder};
 }
@@ -37,15 +37,26 @@
   background: {$lightgreybackground};
 }
 
-.aphront-table-view th {
+.device-desktop .aphront-table-view tr:hover {
+  background: {$bluebackground};
+}
+
+.device-desktop .aphront-table-view tr.no-data:hover {
+  background: inherit;
+}
+
+.aphront-table-view th,
+.aphront-table-view td.header {
   font-weight: bold;
-  font-size: {$normalfontsize};
   white-space: nowrap;
   color: {$bluetext};
-  text-shadow: 0 1px 0 white;
   font-weight: bold;
-  border-bottom: 1px solid {$thinblueborder};
+  text-shadow: 0 1px 0 white;
   background-color: {$lightbluebackground};
+}
+
+.aphront-table-view th {
+  border-bottom: 1px solid {$thinblueborder};
 }
 
 th.aphront-table-view-sortable-selected {
@@ -67,17 +78,14 @@ th.aphront-table-view-sortable-selected {
 }
 
 .aphront-table-view td.header {
-  padding: 4px 8px;
-  white-space: nowrap;
   text-align: right;
-  color: {$bluetext};
-  font-weight: bold;
-  vertical-align: top;
+  border-right: 1px solid {$thinblueborder};
 }
 
 .aphront-table-view td {
   white-space: nowrap;
   vertical-align: middle;
+  color: {$darkbluetext};
 }
 
 .aphront-table-down-sort {
@@ -115,33 +123,15 @@ th.aphront-table-view-sortable-selected {
 
 .aphront-table-view th {
   padding: 8px 10px;
-  font-size: {$normalfontsize};
 }
 
 .aphront-table-view td {
   padding: 8px 10px;
-  font-size: {$smallerfontsize};
-}
-
-.device-tablet .aphront-table-view td,
-.device-phone .aphront-table-view td {
-  padding: 6px;
-}
-
-.device-tablet .aphront-table-view td + td,
-.device-phone .aphront-table-view td + td {
-  padding-left: 0px;
 }
 
 .device-tablet .aphront-table-view th,
 .device-phone .aphront-table-view th {
-  padding: 6px;
   overflow: hidden;
-}
-
-.device-tablet .aphront-table-view th + th,
-.device-phone .aphront-table-view th + th {
-  padding-left: 0px;
 }
 
 .aphront-table-view td.sorted-column {
@@ -196,7 +186,7 @@ th.aphront-table-view-sortable-selected {
 }
 
 .aphront-table-view td.wrap {
-  white-space:      normal;
+  white-space: normal;
 }
 
 .aphront-table-view td.prewrap {
@@ -282,7 +272,6 @@ span.single-display-line-content {
   text-align: center;
   color: {$lightgreytext};
   font-style: italic;
-  font-size: {$normalfontsize};
 }
 
 .aphront-table-view td.thumb img {
@@ -337,4 +326,41 @@ span.single-display-line-content {
 
 .phui-object-box .aphront-table-view {
   border: none;
+}
+
+.object-graph-header {
+  padding: 8px 12px;
+  overflow: hidden;
+  background: {$lightyellow};
+  border-bottom: 1px solid {$lightblueborder};
+  vertical-align: middle;
+}
+
+.object-graph-header .object-graph-header-icon {
+  float: left;
+  margin-top: 10px;
+}
+
+.object-graph-header a.button {
+  float: right;
+}
+
+.object-graph-header-message {
+  margin: 8px 200px 8px 20px;
+}
+
+.device .object-graph-header .object-graph-header-icon {
+  display: none;
+}
+
+.device .object-graph-header-message {
+  clear: both;
+  margin: 0;
+}
+
+.device .object-graph-header a.button {
+  margin: 0 auto 12px;
+  display: block;
+  width: 180px;
+  float: none;
 }

@@ -103,6 +103,14 @@ abstract class PhabricatorApplicationSearchEngine extends Phobject {
   }
 
   public function saveQuery(PhabricatorSavedQuery $query) {
+    if ($query->getID()) {
+      throw new Exception(
+        pht(
+          'Query (with ID "%s") has already been saved. Queries are '.
+          'immutable once saved.',
+          $query->getID()));
+    }
+
     $query->setEngineClassName(get_class($this));
 
     $unguarded = AphrontWriteGuard::beginScopedUnguardedWrites();
@@ -324,6 +332,9 @@ abstract class PhabricatorApplicationSearchEngine extends Phobject {
 
     $result = $head + $body + $tail;
 
+    // Force the fulltext "query" field to the top unconditionally.
+    $result = array_select_keys($result, array('query')) + $result;
+
     foreach ($this->getHiddenFields() as $hidden_key) {
       unset($result[$hidden_key]);
     }
@@ -356,7 +367,7 @@ abstract class PhabricatorApplicationSearchEngine extends Phobject {
    *   );
    *
    * Any unspecified fields (including custom fields and fields added
-   * automatically by infrastruture) will be put in the middle.
+   * automatically by infrastructure) will be put in the middle.
    *
    * @return list<string> Default ordering for field keys.
    */
@@ -408,6 +419,10 @@ abstract class PhabricatorApplicationSearchEngine extends Phobject {
 
   public function getQueryBaseURI() {
     return $this->getURI('');
+  }
+
+  public function getExportURI($query_key) {
+    return $this->getURI('query/'.$query_key.'/export/');
   }
 
 
@@ -474,8 +489,12 @@ abstract class PhabricatorApplicationSearchEngine extends Phobject {
     if ($this->namedQueries === null) {
       $named_queries = id(new PhabricatorNamedQueryQuery())
         ->setViewer($viewer)
-        ->withUserPHIDs(array($viewer->getPHID()))
         ->withEngineClassNames(array(get_class($this)))
+        ->withUserPHIDs(
+          array(
+            $viewer->getPHID(),
+            PhabricatorNamedQuery::SCOPE_GLOBAL,
+          ))
         ->execute();
       $named_queries = mpull($named_queries, null, 'getQueryKey');
 
@@ -494,7 +513,7 @@ abstract class PhabricatorApplicationSearchEngine extends Phobject {
         unset($builtin[$key]);
       }
 
-      $named_queries = msort($named_queries, 'getSortKey');
+      $named_queries = msortv($named_queries, 'getNamedQuerySortVector');
       $this->namedQueries = $named_queries;
     }
 
@@ -509,6 +528,34 @@ abstract class PhabricatorApplicationSearchEngine extends Phobject {
       }
     }
     return $named_queries;
+  }
+
+  public function getDefaultQueryKey() {
+    $viewer = $this->requireViewer();
+
+    $configs = id(new PhabricatorNamedQueryConfigQuery())
+      ->setViewer($viewer)
+      ->withEngineClassNames(array(get_class($this)))
+      ->withScopePHIDs(
+        array(
+          $viewer->getPHID(),
+          PhabricatorNamedQueryConfig::SCOPE_GLOBAL,
+        ))
+      ->execute();
+    $configs = msortv($configs, 'getStrengthSortVector');
+
+    $key_pinned = PhabricatorNamedQueryConfig::PROPERTY_PINNED;
+    $map = $this->loadEnabledNamedQueries();
+    foreach ($configs as $config) {
+      $pinned = $config->getConfigProperty($key_pinned);
+      if (!isset($map[$pinned])) {
+        continue;
+      }
+
+      return $pinned;
+    }
+
+    return head_key($map);
   }
 
   protected function setQueryProjects(
@@ -603,7 +650,7 @@ abstract class PhabricatorApplicationSearchEngine extends Phobject {
     $sequence = 0;
     foreach ($names as $key => $name) {
       $queries[$key] = id(new PhabricatorNamedQuery())
-        ->setUserPHID($this->requireViewer()->getPHID())
+        ->setUserPHID(PhabricatorNamedQuery::SCOPE_GLOBAL)
         ->setEngineClassName(get_class($this))
         ->setQueryName($name)
         ->setQueryKey($key)
@@ -1404,6 +1451,157 @@ abstract class PhabricatorApplicationSearchEngine extends Phobject {
 
   public function newUseResultsActions(PhabricatorSavedQuery $saved) {
     return array();
+  }
+
+
+/* -(  Export  )------------------------------------------------------------- */
+
+
+  public function canExport() {
+    $fields = $this->newExportFields();
+    return (bool)$fields;
+  }
+
+  final public function newExportFieldList() {
+    $object = $this->newResultObject();
+
+    $builtin_fields = array(
+      id(new PhabricatorIDExportField())
+        ->setKey('id')
+        ->setLabel(pht('ID')),
+    );
+
+    if ($object->getConfigOption(LiskDAO::CONFIG_AUX_PHID)) {
+      $builtin_fields[] = id(new PhabricatorPHIDExportField())
+        ->setKey('phid')
+        ->setLabel(pht('PHID'));
+    }
+
+    $fields = mpull($builtin_fields, null, 'getKey');
+
+    $export_fields = $this->newExportFields();
+    foreach ($export_fields as $export_field) {
+      $key = $export_field->getKey();
+
+      if (isset($fields[$key])) {
+        throw new Exception(
+          pht(
+            'Search engine ("%s") defines an export field with a key ("%s") '.
+            'that collides with another field. Each field must have a '.
+            'unique key.',
+            get_class($this),
+            $key));
+      }
+
+      $fields[$key] = $export_field;
+    }
+
+    $extensions = $this->newExportExtensions();
+    foreach ($extensions as $extension) {
+      $extension_fields = $extension->newExportFields();
+      foreach ($extension_fields as $extension_field) {
+        $key = $extension_field->getKey();
+
+        if (isset($fields[$key])) {
+          throw new Exception(
+            pht(
+              'Export engine extension ("%s") defines an export field with '.
+              'a key ("%s") that collides with another field. Each field '.
+              'must have a unique key.',
+              get_class($extension_field),
+              $key));
+        }
+
+        $fields[$key] = $extension_field;
+      }
+    }
+
+    return $fields;
+  }
+
+  final public function newExport(array $objects) {
+    $object = $this->newResultObject();
+    $has_phid = $object->getConfigOption(LiskDAO::CONFIG_AUX_PHID);
+
+    $objects = array_values($objects);
+    $n = count($objects);
+
+    $maps = array();
+    foreach ($objects as $object) {
+      $map = array(
+        'id' => $object->getID(),
+      );
+
+      if ($has_phid) {
+        $map['phid'] = $object->getPHID();
+      }
+
+      $maps[] = $map;
+    }
+
+    $export_data = $this->newExportData($objects);
+    $export_data = array_values($export_data);
+    if (count($export_data) !== count($objects)) {
+      throw new Exception(
+        pht(
+          'Search engine ("%s") exported the wrong number of objects, '.
+          'expected %s but got %s.',
+          get_class($this),
+          phutil_count($objects),
+          phutil_count($export_data)));
+    }
+
+    for ($ii = 0; $ii < $n; $ii++) {
+      $maps[$ii] += $export_data[$ii];
+    }
+
+    $extensions = $this->newExportExtensions();
+    foreach ($extensions as $extension) {
+      $extension_data = $extension->newExportData($objects);
+      $extension_data = array_values($extension_data);
+      if (count($export_data) !== count($objects)) {
+        throw new Exception(
+          pht(
+            'Export engine extension ("%s") exported the wrong number of '.
+            'objects, expected %s but got %s.',
+            get_class($extension),
+            phutil_count($objects),
+            phutil_count($export_data)));
+      }
+
+      for ($ii = 0; $ii < $n; $ii++) {
+        $maps[$ii] += $extension_data[$ii];
+      }
+    }
+
+    return $maps;
+  }
+
+  protected function newExportFields() {
+    return array();
+  }
+
+  protected function newExportData(array $objects) {
+    throw new PhutilMethodNotImplementedException();
+  }
+
+  private function newExportExtensions() {
+    $object = $this->newResultObject();
+    $viewer = $this->requireViewer();
+
+    $extensions = PhabricatorExportEngineExtension::getAllExtensions();
+
+    $supported = array();
+    foreach ($extensions as $extension) {
+      $extension = clone $extension;
+      $extension->setViewer($viewer);
+
+      if ($extension->supportsObject($object)) {
+        $supported[] = $extension;
+      }
+    }
+
+    return $supported;
   }
 
 }

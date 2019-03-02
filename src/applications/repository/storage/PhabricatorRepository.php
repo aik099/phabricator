@@ -12,10 +12,12 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     PhabricatorFlaggableInterface,
     PhabricatorMarkupInterface,
     PhabricatorDestructibleInterface,
+    PhabricatorDestructibleCodexInterface,
     PhabricatorProjectInterface,
     PhabricatorSpacesInterface,
     PhabricatorConduitResultInterface,
-    PhabricatorFulltextInterface {
+    PhabricatorFulltextInterface,
+    PhabricatorFerretInterface {
 
   /**
    * Shortest hash we'll recognize in raw "a829f32" form.
@@ -61,6 +63,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
   protected $viewPolicy;
   protected $editPolicy;
   protected $pushPolicy;
+  protected $profileImagePHID;
 
   protected $versionControlSystem;
   protected $details = array();
@@ -73,6 +76,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
   private $mostRecentCommit = self::ATTACHABLE;
   private $projectPHIDs = self::ATTACHABLE;
   private $uris = self::ATTACHABLE;
+  private $profileImageFile = self::ATTACHABLE;
 
 
   public static function initializeNewRepository(PhabricatorUser $actor) {
@@ -114,6 +118,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
         'credentialPHID' => 'phid?',
         'almanacServicePHID' => 'phid?',
         'localPath' => 'text128?',
+        'profileImagePHID' => 'phid?',
       ),
       self::CONFIG_KEY_SCHEMA => array(
         'callsign' => array(
@@ -236,20 +241,6 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
 
   public function getDetail($key, $default = null) {
     return idx($this->details, $key, $default);
-  }
-
-  public function getHumanReadableDetail($key, $default = null) {
-    $value = $this->getDetail($key, $default);
-
-    switch ($key) {
-      case 'branch-filter':
-      case 'close-commits-filter':
-        $value = array_keys($value);
-        $value = implode(', ', $value);
-        break;
-    }
-
-    return $value;
   }
 
   public function setDetail($key, $value) {
@@ -440,7 +431,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     if (!strlen($name)) {
       $name = $this->getName();
       $name = phutil_utf8_strtolower($name);
-      $name = preg_replace('@[/ -:<>]+@', '-', $name);
+      $name = preg_replace('@[ -/:->]+@', '-', $name);
       $name = trim($name, '-');
       if (!strlen($name)) {
         $name = $this->getCallsign();
@@ -558,6 +549,20 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
           $callsign));
     }
   }
+
+  public function getProfileImageURI() {
+    return $this->getProfileImageFile()->getBestURI();
+  }
+
+  public function attachProfileImageFile(PhabricatorFile $file) {
+    $this->profileImageFile = $file;
+    return $this;
+  }
+
+  public function getProfileImageFile() {
+    return $this->assertAttached($this->profileImageFile);
+  }
+
 
 
 /* -(  Remote Command Execution  )------------------------------------------- */
@@ -763,7 +768,11 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     $action = idx($params, 'action');
     switch ($action) {
       case 'history':
+      case 'graph':
+      case 'clone':
+      case 'blame':
       case 'browse':
+      case 'document':
       case 'change':
       case 'lastmodified':
       case 'tags':
@@ -840,7 +849,10 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     switch ($action) {
       case 'change':
       case 'history':
+      case 'graph':
+      case 'blame':
       case 'browse':
+      case 'document':
       case 'lastmodified':
       case 'tags':
       case 'branches':
@@ -880,13 +892,14 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
         // it came from a URI.
         $uri = rawurldecode("{$path}{$commit}");
         break;
+      case 'clone':
+        $uri = $this->getPathURI("/{$action}/");
+      break;
     }
 
     if ($action == 'rendering-ref') {
       return $uri;
     }
-
-    $uri = new PhutilURI($uri);
 
     if (isset($params['lint'])) {
       $params['params'] = idx($params, 'params', array()) + array(
@@ -896,11 +909,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
 
     $query = idx($params, 'params', array()) + $query;
 
-    if ($query) {
-      $uri->setQueryParams($query);
-    }
-
-    return $uri;
+    return new PhutilURI($uri, $query);
   }
 
   public function updateURIIndex() {
@@ -1260,6 +1269,26 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     return null;
   }
 
+  public function getAutocloseOnlyRules() {
+    return array_keys($this->getDetail('close-commits-filter', array()));
+  }
+
+  public function setAutocloseOnlyRules(array $rules) {
+    $rules = array_fill_keys($rules, true);
+    $this->setDetail('close-commits-filter', $rules);
+    return $this;
+  }
+
+  public function getTrackOnlyRules() {
+    return array_keys($this->getDetail('branch-filter', array()));
+  }
+
+  public function setTrackOnlyRules(array $rules) {
+    $rules = array_fill_keys($rules, true);
+    $this->setDetail('branch-filter', $rules);
+    return $this;
+  }
+
 
 /* -(  Repository URI Management  )------------------------------------------ */
 
@@ -1558,9 +1587,18 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     return $this->setDetail('hosting-enabled', $enabled);
   }
 
-  public function canServeProtocol($protocol, $write) {
-    if (!$this->isTracked()) {
-      return false;
+  public function canServeProtocol(
+    $protocol,
+    $write,
+    $is_intracluster = false) {
+
+    // See T13192. If a repository is inactive, don't serve it to users. We
+    // still synchronize it within the cluster and serve it to other repository
+    // nodes.
+    if (!$is_intracluster) {
+      if (!$this->isTracked()) {
+        return false;
+      }
     }
 
     $clone_uris = $this->getCloneURIs();
@@ -1689,8 +1727,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
       return false;
     }
 
-    // TODO: Unprototype this feature.
-    if (!PhabricatorEnv::getEnvConfig('phabricator.show-prototypes')) {
+    if (!PhabricatorEnv::getEnvConfig('diffusion.allow-git-lfs')) {
       return false;
     }
 
@@ -1733,6 +1770,18 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
 
   public function shouldAllowDangerousChanges() {
     return (bool)$this->getDetail('allow-dangerous-changes');
+  }
+
+  public function canAllowEnormousChanges() {
+    if (!$this->isHosted()) {
+      return false;
+    }
+
+    return true;
+  }
+
+  public function shouldAllowEnormousChanges() {
+    return (bool)$this->getDetail('allow-enormous-changes');
   }
 
   public function writeStatusMessage(
@@ -1937,21 +1986,76 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
 
 
   /**
-   * Retrieve the sevice URI for the device hosting this repository.
+   * Time limit for cloning or copying this repository.
+   *
+   * This limit is used to timeout operations like `git clone` or `git fetch`
+   * when doing intracluster synchronization, building working copies, etc.
+   *
+   * @return int Maximum number of seconds to spend copying this repository.
+   */
+  public function getCopyTimeLimit() {
+    return $this->getDetail('limit.copy');
+  }
+
+  public function setCopyTimeLimit($limit) {
+    return $this->setDetail('limit.copy', $limit);
+  }
+
+  public function getDefaultCopyTimeLimit() {
+    return phutil_units('15 minutes in seconds');
+  }
+
+  public function getEffectiveCopyTimeLimit() {
+    $limit = $this->getCopyTimeLimit();
+    if ($limit) {
+      return $limit;
+    }
+
+    return $this->getDefaultCopyTimeLimit();
+  }
+
+  public function getFilesizeLimit() {
+    return $this->getDetail('limit.filesize');
+  }
+
+  public function setFilesizeLimit($limit) {
+    return $this->setDetail('limit.filesize', $limit);
+  }
+
+  public function getTouchLimit() {
+    return $this->getDetail('limit.touch');
+  }
+
+  public function setTouchLimit($limit) {
+    return $this->setDetail('limit.touch', $limit);
+  }
+
+  /**
+   * Retrieve the service URI for the device hosting this repository.
    *
    * See @{method:newConduitClient} for a general discussion of interacting
    * with repository services. This method provides lower-level resolution of
    * services, returning raw URIs.
    *
    * @param PhabricatorUser Viewing user.
-   * @param bool `true` to throw if a remote URI would be returned.
-   * @param list<string> List of allowable protocols.
+   * @param map<string, wild> Constraints on selectable services.
    * @return string|null URI, or `null` for local repositories.
    */
   public function getAlmanacServiceURI(
     PhabricatorUser $viewer,
-    $never_proxy,
-    array $protocols) {
+    array $options) {
+
+    PhutilTypeSpec::checkMap(
+      $options,
+      array(
+        'neverProxy' => 'bool',
+        'protocols' => 'list<string>',
+        'writable' => 'optional bool',
+      ));
+
+    $never_proxy = $options['neverProxy'];
+    $protocols = $options['protocols'];
+    $writable = idx($options, 'writable', false);
 
     $cache_key = $this->getAlmanacServiceCacheKey();
     if (!$cache_key) {
@@ -1997,7 +2101,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
       }
 
       if (isset($protocol_map[$uri['protocol']])) {
-        $results[] = new PhutilURI($uri['uri']);
+        $results[] = $uri;
       }
     }
 
@@ -2010,10 +2114,35 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     }
 
     if ($never_proxy) {
+      // See PHI1030. This error can arise from various device name/address
+      // mismatches which are hard to detect, so try to provide as much
+      // information as we can.
+
+      if ($writable) {
+        $request_type = pht('(This is a write request.)');
+      } else {
+        $request_type = pht('(This is a read request.)');
+      }
+
       throw new Exception(
         pht(
-          'Refusing to proxy a repository request from a cluster host. '.
-          'Cluster hosts must correctly route their intracluster requests.'));
+          'This repository request (for repository "%s") has been '.
+          'incorrectly routed to a cluster host (with device name "%s", '.
+          'and hostname "%s") which can not serve the request.'.
+          "\n\n".
+          'The Almanac device address for the correct device may improperly '.
+          'point at this host, or the "device.id" configuration file on '.
+          'this host may be incorrect.'.
+          "\n\n".
+          'Requests routed within the cluster by Phabricator are always '.
+          'expected to be sent to a node which can serve the request. To '.
+          'prevent loops, this request will not be proxied again.'.
+          "\n\n".
+          "%s",
+          $this->getDisplayName(),
+          $local_device,
+          php_uname('n'),
+          $request_type));
     }
 
     if (count($results) > 1) {
@@ -2028,8 +2157,89 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
       }
     }
 
+    // If we require a writable device, remove URIs which aren't writable.
+    if ($writable) {
+      foreach ($results as $key => $uri) {
+        if (!$uri['writable']) {
+          unset($results[$key]);
+        }
+      }
+
+      if (!$results) {
+        throw new Exception(
+          pht(
+            'This repository ("%s") is not writable with the given '.
+            'protocols (%s). The Almanac service for this repository has no '.
+            'writable bindings that support these protocols.',
+            $this->getDisplayName(),
+            implode(', ', $protocols)));
+      }
+    }
+
+    if ($writable) {
+      $results = $this->sortWritableAlmanacServiceURIs($results);
+    } else {
+      shuffle($results);
+    }
+
+    $result = head($results);
+    return $result['uri'];
+  }
+
+  private function sortWritableAlmanacServiceURIs(array $results) {
+    // See T13109 for discussion of how this method routes requests.
+
+    // In the absence of other rules, we'll send traffic to devices randomly.
+    // We also want to select randomly among nodes which are equally good
+    // candidates to receive the write, and accomplish that by shuffling the
+    // list up front.
     shuffle($results);
-    return head($results);
+
+    $order = array();
+
+    // If some device is currently holding the write lock, send all requests
+    // to that device. We're trying to queue writes on a single device so they
+    // do not need to wait for read synchronization after earlier writes
+    // complete.
+    $writer = PhabricatorRepositoryWorkingCopyVersion::loadWriter(
+      $this->getPHID());
+    if ($writer) {
+      $device_phid = $writer->getWriteProperty('devicePHID');
+      foreach ($results as $key => $result) {
+        if ($result['devicePHID'] === $device_phid) {
+          $order[] = $key;
+        }
+      }
+    }
+
+    // If no device is currently holding the write lock, try to send requests
+    // to a device which is already up to date and will not need to synchronize
+    // before it can accept the write.
+    $versions = PhabricatorRepositoryWorkingCopyVersion::loadVersions(
+      $this->getPHID());
+    if ($versions) {
+      $max_version = (int)max(mpull($versions, 'getRepositoryVersion'));
+
+      $max_devices = array();
+      foreach ($versions as $version) {
+        if ($version->getRepositoryVersion() == $max_version) {
+          $max_devices[] = $version->getDevicePHID();
+        }
+      }
+      $max_devices = array_fuse($max_devices);
+
+      foreach ($results as $key => $result) {
+        if (isset($max_devices[$result['devicePHID']])) {
+          $order[] = $key;
+        }
+      }
+    }
+
+    // Reorder the results, putting any we've selected as preferred targets for
+    // the write at the head of the list.
+    $results = array_select_keys($results, $order) + $results;
+
+    return $results;
   }
 
   public function supportsSynchronization() {
@@ -2048,7 +2258,14 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     }
 
     $repository_phid = $this->getPHID();
-    return "diffusion.repository({$repository_phid}).service({$service_phid})";
+
+    $parts = array(
+      "repo({$repository_phid})",
+      "serv({$service_phid})",
+      'v4',
+    );
+
+    return implode('.', $parts);
   }
 
   private function buildAlmanacServiceURIs() {
@@ -2072,11 +2289,14 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
       $uri = $this->getClusterRepositoryURIFromBinding($binding);
       $protocol = $uri->getProtocol();
       $device_name = $iface->getDevice()->getName();
+      $device_phid = $iface->getDevice()->getPHID();
 
       $uris[] = array(
         'protocol' => $protocol,
         'uri' => (string)$uri,
         'device' => $device_name,
+        'writable' => (bool)$binding->getAlmanacPropertyValue('writable'),
+        'devicePHID' => $device_phid,
       );
     }
 
@@ -2124,10 +2344,16 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
 
     $uri = $this->getAlmanacServiceURI(
       $viewer,
-      $never_proxy,
       array(
-        'http',
-        'https',
+        'neverProxy' => $never_proxy,
+        'protocols' => array(
+          'http',
+          'https',
+        ),
+
+        // At least today, no Conduit call can ever write to a repository,
+        // so it's fine to send anything to a read-only node.
+        'writable' => false,
       ));
     if ($uri === null) {
       return null;
@@ -2191,7 +2417,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     if ($this->isGit()) {
       // $_ENV does not populate in CLI contexts if "E" is missing from
       // "variables_order" in PHP config. Currently, we do not require this
-      // to be configured. Since it may not be, explictitly bring expected Git
+      // to be configured. Since it may not be, explicitly bring expected Git
       // environmental variables into scope. This list is not exhaustive, but
       // only lists variables with a known impact on commit hook behavior.
 
@@ -2502,19 +2728,8 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     return new PhabricatorRepositoryEditor();
   }
 
-  public function getApplicationTransactionObject() {
-    return $this;
-  }
-
   public function getApplicationTransactionTemplate() {
     return new PhabricatorRepositoryTransaction();
-  }
-
-  public function willRenderTimeline(
-    PhabricatorApplicationTransactionView $timeline,
-    AphrontRequest $request) {
-
-    return $timeline;
   }
 
 
@@ -2621,6 +2836,14 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
   }
 
 
+/* -(  PhabricatorDestructibleCodexInterface  )------------------------------ */
+
+
+  public function newDestructibleCodex() {
+    return new PhabricatorRepositoryDestructibleCodex();
+  }
+
+
 /* -(  PhabricatorSpacesInterface  )----------------------------------------- */
 
 
@@ -2660,6 +2883,13 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
         ->setDescription(
           pht(
             'True if the repository is importing initial commits.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('almanacServicePHID')
+        ->setType('phid?')
+        ->setDescription(
+          pht(
+            'The Almanac Service that hosts this repository, if the '.
+            'repository is clustered.')),
     );
   }
 
@@ -2671,6 +2901,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
       'shortName' => $this->getRepositorySlug(),
       'status' => $this->getStatus(),
       'isImporting' => (bool)$this->isImporting(),
+      'almanacServicePHID' => $this->getAlmanacServicePHID(),
     );
   }
 
@@ -2686,6 +2917,14 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
 
   public function newFulltextEngine() {
     return new PhabricatorRepositoryFulltextEngine();
+  }
+
+
+/* -(  PhabricatorFerretInterface  )----------------------------------------- */
+
+
+  public function newFerretEngine() {
+    return new PhabricatorRepositoryFerretEngine();
   }
 
 }

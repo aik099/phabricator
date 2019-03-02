@@ -34,7 +34,10 @@ final class PhabricatorProjectBoardViewController
       ->setBaseURI($board_uri)
       ->setIsBoardView(true);
 
-    if ($request->isFormPost() && !$request->getBool('initialize')) {
+    if ($request->isFormPost()
+      && !$request->getBool('initialize')
+      && !$request->getStr('move')
+      && !$request->getStr('queryColumnID')) {
       $saved = $search_engine->buildSavedQueryFromRequest($request);
       $search_engine->saveQuery($saved);
       $filter_form = id(new AphrontFormView())
@@ -186,6 +189,46 @@ final class PhabricatorProjectBoardViewController
         ->appendChild($content);
     }
 
+    // If the user wants to turn a particular column into a query, build an
+    // apropriate filter and redirect them to the query results page.
+    $query_column_id = $request->getInt('queryColumnID');
+    if ($query_column_id) {
+      $column_id_map = mpull($columns, null, 'getID');
+      $query_column = idx($column_id_map, $query_column_id);
+      if (!$query_column) {
+        return new Aphront404Response();
+      }
+
+      // Create a saved query to combine the active filter on the workboard
+      // with the column filter. If the user currently has constraints on the
+      // board, we want to add a new column or project constraint, not
+      // completely replace the constraints.
+      $saved_query = $saved->newCopy();
+
+      if ($query_column->getProxyPHID()) {
+        $project_phids = $saved_query->getParameter('projectPHIDs');
+        if (!$project_phids) {
+          $project_phids = array();
+        }
+        $project_phids[] = $query_column->getProxyPHID();
+        $saved_query->setParameter('projectPHIDs', $project_phids);
+      } else {
+        $saved_query->setParameter(
+          'columnPHIDs',
+          array($query_column->getPHID()));
+      }
+
+      $search_engine = id(new ManiphestTaskSearchEngine())
+        ->setViewer($viewer);
+      $search_engine->saveQuery($saved_query);
+
+      $query_key = $saved_query->getQueryKey();
+      $query_uri = new PhutilURI("/maniphest/query/{$query_key}/#R");
+
+      return id(new AphrontRedirectResponse())
+        ->setURI($query_uri);
+    }
+
     $task_can_edit_map = id(new PhabricatorPolicyFilter())
       ->setViewer($viewer)
       ->requireCapabilities(array(PhabricatorPolicyCapability::CAN_EDIT))
@@ -228,15 +271,223 @@ final class PhabricatorProjectBoardViewController
           ->addCancelButton($board_uri);
       }
 
-      $batch_ids = mpull($batch_tasks, 'getID');
-      $batch_ids = implode(',', $batch_ids);
+      // Create a saved query to hold the working set. This allows us to get
+      // around URI length limitations with a long "?ids=..." query string.
+      // For details, see T10268.
+      $search_engine = id(new ManiphestTaskSearchEngine())
+        ->setViewer($viewer);
 
-      $batch_uri = new PhutilURI('/maniphest/batch/');
-      $batch_uri->setQueryParam('board', $this->id);
-      $batch_uri->setQueryParam('batch', $batch_ids);
+      $saved_query = $search_engine->newSavedQuery();
+      $saved_query->setParameter('ids', mpull($batch_tasks, 'getID'));
+      $search_engine->saveQuery($saved_query);
+
+      $query_key = $saved_query->getQueryKey();
+
+      $bulk_uri = new PhutilURI("/maniphest/bulk/query/{$query_key}/");
+      $bulk_uri->replaceQueryParam('board', $this->id);
+
       return id(new AphrontRedirectResponse())
-        ->setURI($batch_uri);
+        ->setURI($bulk_uri);
     }
+
+    $move_id = $request->getStr('move');
+    if (strlen($move_id)) {
+      $column_id_map = mpull($columns, null, 'getID');
+      $move_column = idx($column_id_map, $move_id);
+      if (!$move_column) {
+        return new Aphront404Response();
+      }
+
+      $move_task_phids = $layout_engine->getColumnObjectPHIDs(
+        $board_phid,
+        $move_column->getPHID());
+
+      foreach ($move_task_phids as $key => $move_task_phid) {
+        if (empty($task_can_edit_map[$move_task_phid])) {
+          unset($move_task_phids[$key]);
+        }
+      }
+
+      $move_tasks = array_select_keys($tasks, $move_task_phids);
+      $cancel_uri = $this->getURIWithState($board_uri);
+
+      if (!$move_tasks) {
+        return $this->newDialog()
+          ->setTitle(pht('No Movable Tasks'))
+          ->appendParagraph(
+            pht(
+              'The selected column contains no visible tasks which you '.
+              'have permission to move.'))
+          ->addCancelButton($cancel_uri);
+      }
+
+      $move_project_phid = $project->getPHID();
+      $move_column_phid = null;
+      $move_project = null;
+      $move_column = null;
+      $columns = null;
+      $errors = array();
+
+      if ($request->isFormPost()) {
+        $move_project_phid = head($request->getArr('moveProjectPHID'));
+        if (!$move_project_phid) {
+          $move_project_phid = $request->getStr('moveProjectPHID');
+        }
+
+        if (!$move_project_phid) {
+          if ($request->getBool('hasProject')) {
+            $errors[] = pht('Choose a project to move tasks to.');
+          }
+        } else {
+          $target_project = id(new PhabricatorProjectQuery())
+            ->setViewer($viewer)
+            ->withPHIDs(array($move_project_phid))
+            ->executeOne();
+          if (!$target_project) {
+            $errors[] = pht('You must choose a valid project.');
+          } else if (!$project->getHasWorkboard()) {
+            $errors[] = pht(
+              'You must choose a project with a workboard.');
+          } else {
+            $move_project = $target_project;
+          }
+        }
+
+        if ($move_project) {
+          $move_engine = id(new PhabricatorBoardLayoutEngine())
+            ->setViewer($viewer)
+            ->setBoardPHIDs(array($move_project->getPHID()))
+            ->setFetchAllBoards(true)
+            ->executeLayout();
+
+          $columns = $move_engine->getColumns($move_project->getPHID());
+          $columns = mpull($columns, null, 'getPHID');
+
+          foreach ($columns as $key => $column) {
+            if ($column->isHidden()) {
+              unset($columns[$key]);
+            }
+          }
+
+          $move_column_phid = $request->getStr('moveColumnPHID');
+          if (!$move_column_phid) {
+            if ($request->getBool('hasColumn')) {
+              $errors[] = pht('Choose a column to move tasks to.');
+            }
+          } else {
+            if (empty($columns[$move_column_phid])) {
+              $errors[] = pht(
+                'Choose a valid column on the target workboard to move '.
+                'tasks to.');
+            } else if ($columns[$move_column_phid]->getID() == $move_id) {
+              $errors[] = pht(
+                'You can not move tasks from a column to itself.');
+            } else {
+              $move_column = $columns[$move_column_phid];
+            }
+          }
+        }
+      }
+
+      if ($move_column && $move_project) {
+        foreach ($move_tasks as $move_task) {
+          $xactions = array();
+
+          // If we're switching projects, get out of the old project first
+          // and move to the new project.
+          if ($move_project->getID() != $project->getID()) {
+            $xactions[] = id(new ManiphestTransaction())
+              ->setTransactionType(PhabricatorTransactions::TYPE_EDGE)
+              ->setMetadataValue(
+                'edge:type',
+                PhabricatorProjectObjectHasProjectEdgeType::EDGECONST)
+              ->setNewValue(
+                array(
+                  '-' => array(
+                    $project->getPHID() => $project->getPHID(),
+                  ),
+                  '+' => array(
+                    $move_project->getPHID() => $move_project->getPHID(),
+                  ),
+                ));
+          }
+
+          $xactions[] = id(new ManiphestTransaction())
+            ->setTransactionType(PhabricatorTransactions::TYPE_COLUMNS)
+            ->setNewValue(
+              array(
+                array(
+                  'columnPHID' => $move_column->getPHID(),
+                ),
+              ));
+
+          $editor = id(new ManiphestTransactionEditor())
+            ->setActor($viewer)
+            ->setContinueOnMissingFields(true)
+            ->setContinueOnNoEffect(true)
+            ->setContentSourceFromRequest($request);
+
+          $editor->applyTransactions($move_task, $xactions);
+        }
+
+        return id(new AphrontRedirectResponse())
+          ->setURI($cancel_uri);
+      }
+
+      if ($move_project) {
+        $column_form = id(new AphrontFormView())
+          ->setViewer($viewer)
+          ->appendControl(
+            id(new AphrontFormSelectControl())
+              ->setName('moveColumnPHID')
+              ->setLabel(pht('Move to Column'))
+              ->setValue($move_column_phid)
+              ->setOptions(mpull($columns, 'getDisplayName', 'getPHID')));
+
+        return $this->newDialog()
+          ->setTitle(pht('Move Tasks'))
+          ->setWidth(AphrontDialogView::WIDTH_FORM)
+          ->setErrors($errors)
+          ->addHiddenInput('move', $move_id)
+          ->addHiddenInput('moveProjectPHID', $move_project->getPHID())
+          ->addHiddenInput('hasColumn', true)
+          ->addHiddenInput('hasProject', true)
+          ->appendParagraph(
+            pht(
+              'Choose a column on the %s workboard to move tasks to:',
+              $viewer->renderHandle($move_project->getPHID())))
+          ->appendForm($column_form)
+          ->addSubmitButton(pht('Move Tasks'))
+          ->addCancelButton($cancel_uri);
+      }
+
+      if ($move_project_phid) {
+        $move_project_phid_value = array($move_project_phid);
+      } else {
+        $move_project_phid_value = array();
+      }
+
+      $project_form = id(new AphrontFormView())
+        ->setViewer($viewer)
+        ->appendControl(
+          id(new AphrontFormTokenizerControl())
+            ->setName('moveProjectPHID')
+            ->setLimit(1)
+            ->setLabel(pht('Move to Project'))
+            ->setValue($move_project_phid_value)
+            ->setDatasource(new PhabricatorProjectDatasource()));
+
+      return $this->newDialog()
+        ->setTitle(pht('Move Tasks'))
+        ->setWidth(AphrontDialogView::WIDTH_FORM)
+        ->setErrors($errors)
+        ->addHiddenInput('move', $move_id)
+        ->addHiddenInput('hasProject', true)
+        ->appendForm($project_form)
+        ->addSubmitButton(pht('Continue'))
+        ->addCancelButton($cancel_uri);
+    }
+
 
     $board_id = celerity_generate_unique_node_id();
 
@@ -627,7 +878,7 @@ final class PhabricatorProjectBoardViewController
       }
 
       $uri = $this->getURIWithState($uri)
-        ->setQueryParam('filter', null);
+        ->removeQueryParam('filter');
       $item->setHref($uri);
 
       $items[] = $item;
@@ -715,12 +966,12 @@ final class PhabricatorProjectBoardViewController
 
     if ($show_hidden) {
       $hidden_uri = $this->getURIWithState()
-        ->setQueryParam('hidden', null);
+        ->removeQueryParam('hidden');
       $hidden_icon = 'fa-eye-slash';
       $hidden_text = pht('Hide Hidden Columns');
     } else {
       $hidden_uri = $this->getURIWithState()
-        ->setQueryParam('hidden', 'true');
+        ->replaceQueryParam('hidden', 'true');
       $hidden_icon = 'fa-eye';
       $hidden_text = pht('Show Hidden Columns');
     }
@@ -748,7 +999,7 @@ final class PhabricatorProjectBoardViewController
       ->setHref($manage_uri);
 
     $batch_edit_uri = $request->getRequestURI();
-    $batch_edit_uri->setQueryParam('batch', self::BATCH_EDIT_ALL);
+    $batch_edit_uri->replaceQueryParam('batch', self::BATCH_EDIT_ALL);
     $can_batch_edit = PhabricatorPolicyFilter::hasCapability(
       $viewer,
       PhabricatorApplication::getByClass('PhabricatorManiphestApplication'),
@@ -839,7 +1090,7 @@ final class PhabricatorProjectBoardViewController
     }
 
     $batch_edit_uri = $request->getRequestURI();
-    $batch_edit_uri->setQueryParam('batch', $column->getID());
+    $batch_edit_uri->replaceQueryParam('batch', $column->getID());
     $can_batch_edit = PhabricatorPolicyFilter::hasCapability(
       $viewer,
       PhabricatorApplication::getByClass('PhabricatorManiphestApplication'),
@@ -847,12 +1098,26 @@ final class PhabricatorProjectBoardViewController
 
     $column_items[] = id(new PhabricatorActionView())
       ->setIcon('fa-list-ul')
-      ->setName(pht('Batch Edit Tasks...'))
+      ->setName(pht('Bulk Edit Tasks...'))
       ->setHref($batch_edit_uri)
       ->setDisabled(!$can_batch_edit);
 
-    // Column Related Actions Below
-    //
+    $batch_move_uri = $request->getRequestURI();
+    $batch_move_uri->replaceQueryParam('move', $column->getID());
+    $column_items[] = id(new PhabricatorActionView())
+      ->setIcon('fa-arrow-right')
+      ->setName(pht('Move Tasks to Column...'))
+      ->setHref($batch_move_uri)
+      ->setWorkflow(true);
+
+    $query_uri = $request->getRequestURI();
+    $query_uri->replaceQueryParam('queryColumnID', $column->getID());
+
+    $column_items[] = id(new PhabricatorActionView())
+      ->setName(pht('View as Query'))
+      ->setIcon('fa-search')
+      ->setHref($query_uri);
+
     $edit_uri = 'board/'.$this->id.'/edit/'.$column->getID().'/';
     $column_items[] = id(new PhabricatorActionView())
       ->setName(pht('Edit Column'))
@@ -917,24 +1182,36 @@ final class PhabricatorProjectBoardViewController
     $project = $this->getProject();
 
     if ($base === null) {
-      $base = $this->getRequest()->getRequestURI();
+      $base = $this->getRequest()->getPath();
     }
 
     $base = new PhutilURI($base);
 
     if ($force || ($this->sortKey != $this->getDefaultSort($project))) {
-      $base->setQueryParam('order', $this->sortKey);
+      if ($this->sortKey !== null) {
+        $base->replaceQueryParam('order', $this->sortKey);
+      } else {
+        $base->removeQueryParam('order');
+      }
     } else {
-      $base->setQueryParam('order', null);
+      $base->removeQueryParam('order');
     }
 
     if ($force || ($this->queryKey != $this->getDefaultFilter($project))) {
-      $base->setQueryParam('filter', $this->queryKey);
+      if ($this->queryKey !== null) {
+        $base->replaceQueryParam('filter', $this->queryKey);
+      } else {
+        $base->removeQueryParam('filter');
+      }
     } else {
-      $base->setQueryParam('filter', null);
+      $base->removeQueryParam('filter');
     }
 
-    $base->setQueryParam('hidden', $this->showHidden ? 'true' : null);
+    if ($this->showHidden) {
+      $base->replaceQueryParam('hidden', 'true');
+    } else {
+      $base->removeQueryParam('hidden');
+    }
 
     return $base;
   }

@@ -29,6 +29,18 @@ final class DarkConsoleServicesPlugin extends DarkConsolePlugin {
     return false;
   }
 
+  public function didStartup() {
+    $should_analyze = self::isQueryAnalyzerRequested();
+
+    if ($should_analyze) {
+      PhutilServiceProfiler::getInstance()
+        ->setCollectStackTraces(true);
+    }
+
+    return null;
+  }
+
+
   /**
    * @phutil-external-symbol class PhabricatorStartup
    */
@@ -170,7 +182,8 @@ final class DarkConsoleServicesPlugin extends DarkConsolePlugin {
           'a',
           array(
             'href'  => $data['analyzeURI'],
-            'class' => $data['didAnalyze'] ? 'disabled button' : 'green button',
+            'class' => $data['didAnalyze'] ?
+              'disabled button' : 'button button-green',
           ),
           pht('Analyze Query Plans')),
         phutil_tag('h1', array(), pht('Calls to External Services')),
@@ -265,6 +278,16 @@ final class DarkConsoleServicesPlugin extends DarkConsolePlugin {
         $info,
         $analysis,
       );
+
+      if (isset($row['trace'])) {
+        $rows[] = array(
+          null,
+          null,
+          null,
+          $row['trace'],
+          null,
+        );
+      }
     }
 
     $table = new AphrontTableView($rows);
@@ -273,7 +296,7 @@ final class DarkConsoleServicesPlugin extends DarkConsolePlugin {
         null,
         'n',
         'n',
-        'wide',
+        'wide prewrap',
         '',
       ));
     $table->setHeaders(

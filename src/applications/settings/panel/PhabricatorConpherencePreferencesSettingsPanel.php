@@ -6,7 +6,11 @@ final class PhabricatorConpherencePreferencesSettingsPanel
   const PANELKEY = 'conpherence';
 
   public function getPanelName() {
-    return pht('Conpherence Preferences');
+    return pht('Conpherence');
+  }
+
+  public function getPanelMenuIcon() {
+    return 'fa-comment-o';
   }
 
   public function getPanelGroupKey() {

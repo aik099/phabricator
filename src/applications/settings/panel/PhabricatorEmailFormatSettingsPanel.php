@@ -9,23 +9,19 @@ final class PhabricatorEmailFormatSettingsPanel
     return pht('Email Format');
   }
 
+  public function getPanelMenuIcon() {
+    return 'fa-font';
+  }
+
   public function getPanelGroupKey() {
     return PhabricatorSettingsEmailPanelGroup::PANELGROUPKEY;
   }
 
   public function isUserPanel() {
-    return PhabricatorMetaMTAMail::shouldMultiplexAllMail();
+    return PhabricatorMetaMTAMail::shouldMailEachRecipient();
   }
 
   public function isManagementPanel() {
-    if (!$this->isUserPanel()) {
-      return false;
-    }
-
-    if ($this->getUser()->getIsMailingList()) {
-      return true;
-    }
-
     return false;
   }
 

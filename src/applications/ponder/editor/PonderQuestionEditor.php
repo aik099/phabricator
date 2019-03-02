@@ -10,11 +10,11 @@ final class PonderQuestionEditor
   }
 
   public function getCreateObjectTitle($author, $object) {
-    return pht('%s created this question.', $author);
+    return pht('%s asked this question.', $author);
   }
 
   public function getCreateObjectTitleForFeed($author, $object) {
-    return pht('%s created %s.', $author, $object);
+    return pht('%s asked %s.', $author, $object);
   }
 
   /**
@@ -146,11 +146,9 @@ final class PonderQuestionEditor
   protected function buildMailTemplate(PhabricatorLiskDAO $object) {
     $id = $object->getID();
     $title = $object->getTitle();
-    $original_title = $object->getOriginalTitle();
 
     return id(new PhabricatorMetaMTAMail())
-      ->setSubject("Q{$id}: {$title}")
-      ->addHeader('Thread-Topic', "Q{$id}: {$original_title}");
+      ->setSubject("Q{$id}: {$title}");
   }
 
   protected function buildMailBody(
