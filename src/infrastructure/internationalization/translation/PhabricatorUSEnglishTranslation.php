@@ -682,6 +682,23 @@ final class PhabricatorUSEnglishTranslation
       '%s edited commit(s), added %s: %s; removed %s: %s.' =>
         '%s edited commits, added %3$s; removed %5$s.',
 
+      '%s added %s quality rule(s): %s.' => array(
+        array(
+          '%s added a quality rule: %3$s.',
+          '%s added quality rules: %3$s.',
+        ),
+      ),
+
+      '%s removed %s quality rule(s): %s.' => array(
+        array(
+          '%s removed a quality rule: %3$s.',
+          '%s removed quality rules: %3$s.',
+        ),
+      ),
+
+      '%s edited quality rule(s), added %s: %s; removed %s: %s.' =>
+        '%s edited quality rules, added %3$s; removed %5$s.',
+
       '%s added %s reverted change(s): %s.' => array(
         array(
           '%s added a reverted change: %3$s.',
