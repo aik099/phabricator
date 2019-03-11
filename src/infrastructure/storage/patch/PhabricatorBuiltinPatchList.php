@@ -110,6 +110,7 @@ final class PhabricatorBuiltinPatchList extends PhabricatorSQLPatchList {
       'db.multimeter' => array(),
       'db.spaces' => array(),
       'db.phurl' => array(),
+      'db.quality' => array(),
       'db.badges' => array(),
       'db.packages' => array(),
       'db.application' => array(),
