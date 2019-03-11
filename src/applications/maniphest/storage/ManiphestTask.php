@@ -22,7 +22,8 @@ final class ManiphestTask extends ManiphestDAO
     PhabricatorEditEngineSubtypeInterface,
     PhabricatorEditEngineLockableInterface,
     PhabricatorEditEngineMFAInterface,
-    PhabricatorPolicyCodexInterface {
+    PhabricatorPolicyCodexInterface,
+    PhabricatorUnlockableInterface {
 
   const MARKUP_FIELD_DESCRIPTION = 'markup:desc';
 
@@ -656,6 +657,14 @@ final class ManiphestTask extends ManiphestDAO
 
   public function newPolicyCodex() {
     return new ManiphestTaskPolicyCodex();
+  }
+
+
+/* -(  PhabricatorUnlockableInterface  )------------------------------------- */
+
+
+  public function newUnlockEngine() {
+    return new ManiphestTaskUnlockEngine();
   }
 
 }
