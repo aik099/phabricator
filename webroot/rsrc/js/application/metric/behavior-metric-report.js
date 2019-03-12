@@ -44,8 +44,18 @@ JX.behavior('metric-report', function(config) {
         var grand_total,
             percentage,
             average,
+            group_name = '',
             total = array_sum(this.yData),
             result = this.name;
+
+        // When dealing with quality rules only show their code in the legend.
+        if (config.is_quality_rule) {
+          if (result.match(/( \([^)]*\))$/)) {
+            group_name = RegExp.$1;
+          }
+
+          result = result.split(': ').shift() + group_name;
+        }
 
         if (config.data_type === 'percent' || config.data_type == 'average') {
           average = total / this.yData.length;
