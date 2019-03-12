@@ -47,7 +47,7 @@ final class PhabricatorQualityHovercardEngineExtension
     }
 
     $hovercard->setTitle('QR'.$rule->getID());
-    $hovercard->setDetail($rule->getDescription());
+    $hovercard->setDetail(new PHUIRemarkupView($viewer, $rule->getDescription()));
 
     $hovercard->addField(
       pht('Date'),
