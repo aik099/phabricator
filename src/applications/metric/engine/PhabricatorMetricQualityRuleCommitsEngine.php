@@ -73,7 +73,7 @@ final class PhabricatorMetricQualityRuleCommitsEngine extends PhabricatorMetricA
     $chart_data['stacking'] = 'normal';
     $chart_data['y_axis_title'] = 'Commits';
     $chart_data['plot_options'] = array($this->getChartType());
-    //$chart_data['data_type'] = 'percent';
+    $chart_data['is_quality_rule'] = true;
 
     return $chart_data;
   }
