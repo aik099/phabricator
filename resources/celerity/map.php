@@ -424,7 +424,7 @@ return array(
     'rsrc/js/application/maniphest/behavior-line-chart.js' => 'c8147a20',
     'rsrc/js/application/maniphest/behavior-list-edit.js' => 'c687e867',
     'rsrc/js/application/maniphest/behavior-subpriorityeditor.js' => '8400307c',
-    'rsrc/js/application/metric/behavior-metric-report.js' => '0139c062',
+    'rsrc/js/application/metric/behavior-metric-report.js' => 'b5da21d3',
     'rsrc/js/application/owners/OwnersPathEditor.js' => '2a8b62d9',
     'rsrc/js/application/owners/owners-path-editor.js' => 'ff688a7a',
     'rsrc/js/application/passphrase/passphrase-credential-control.js' => '48fe33d0',
@@ -661,7 +661,7 @@ return array(
     'javelin-behavior-maniphest-batch-selector' => 'cffd39b4',
     'javelin-behavior-maniphest-list-editor' => 'c687e867',
     'javelin-behavior-maniphest-subpriority-editor' => '8400307c',
-    'javelin-behavior-metric-report' => '0139c062',
+    'javelin-behavior-metric-report' => 'b5da21d3',
     'javelin-behavior-owners-path-editor' => 'ff688a7a',
     'javelin-behavior-passphrase-credential-control' => '48fe33d0',
     'javelin-behavior-phabricator-active-nav' => '7353f43d',
@@ -929,11 +929,6 @@ return array(
       'javelin-behavior',
       'javelin-uri',
       'phabricator-notification',
-    ),
-    '0139c062' => array(
-      'javelin-behavior',
-      'javelin-dom',
-      'highcharts-adapters-standalone-framework',
     ),
     '022516b4' => array(
       'javelin-install',
@@ -1920,6 +1915,11 @@ return array(
       'javelin-vector',
       'javelin-dom',
       'javelin-magical-init',
+    ),
+    'b5da21d3' => array(
+      'javelin-behavior',
+      'javelin-dom',
+      'highcharts-adapters-standalone-framework',
     ),
     'b5e9bff9' => array(
       'javelin-behavior',
