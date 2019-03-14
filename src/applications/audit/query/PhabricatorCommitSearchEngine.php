@@ -43,6 +43,10 @@ final class PhabricatorCommitSearchEngine
       $query->withStatuses($map['statuses']);
     }
 
+    if ($map['auditActions']) {
+      $query->withAuditActions($map['auditActions']);
+    }
+
     if ($map['repositoryPHIDs']) {
       $query->withRepositoryPHIDs($map['repositoryPHIDs']);
     }
@@ -102,6 +106,15 @@ final class PhabricatorCommitSearchEngine
         ->setDeprecatedOptions(
           DiffusionCommitAuditStatus::newDeprecatedOptions())
         ->setDescription(pht('Find commits with given audit statuses.')),
+      id(new PhabricatorSearchCheckboxesField())
+        ->setLabel(pht('Audit Actions'))
+        ->setKey('auditActions')
+        ->setOptions(array(
+          PhabricatorAuditActionConstants::ACCEPT => pht('Accepted'),
+          PhabricatorAuditActionConstants::CONCERN => pht('Raised Concern'),
+          PhabricatorAuditActionConstants::RESIGN => pht('Resigned'),
+        ))
+        ->setDescription(pht('Find commits with given audit actions.')),
       id(new PhabricatorSearchDatasourceField())
         ->setLabel(pht('Repositories'))
         ->setKey('repositoryPHIDs')

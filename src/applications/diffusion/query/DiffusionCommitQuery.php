@@ -13,6 +13,7 @@ final class DiffusionCommitQuery
   private $identifierMap;
   private $responsiblePHIDs;
   private $statuses;
+  private $auditActions;
   private $packagePHIDs;
   private $unreachable;
 
@@ -161,6 +162,11 @@ final class DiffusionCommitQuery
 
   public function withStatuses(array $statuses) {
     $this->statuses = $statuses;
+    return $this;
+  }
+
+  public function withAuditActions(array $audit_actions) {
+    $this->auditActions = $audit_actions;
     return $this;
   }
 
@@ -851,6 +857,21 @@ final class DiffusionCommitQuery
         $statuses);
     }
 
+    if ($this->auditActions !== null) {
+      $commits = $this->getCommitsWithAuditActions($this->auditActions);
+
+      if ($commits) {
+        $where[] = qsprintf(
+          $conn,
+          'commit.phid IN (%Ls)',
+          $commits);
+      } else {
+        $where[] = qsprintf(
+          $conn,
+          'FALSE');
+      }
+    }
+
     if ($this->packagePHIDs !== null) {
       $where[] = qsprintf(
         $conn,
@@ -874,6 +895,70 @@ final class DiffusionCommitQuery
     }
 
     return $where;
+  }
+
+  protected function getCommitsWithAuditActions(array $audit_actions) {
+    $transactions = id(new PhabricatorAuditTransactionQuery())
+      ->setViewer($this->getViewer())
+      ->needHandles(false)
+      ->needComments(false)
+      ->withTransactionTypes(array(
+        // Old style.
+        PhabricatorAuditActionConstants::ACTION,
+
+        // New style.
+        DiffusionCommitConcernTransaction::TRANSACTIONTYPE,
+        DiffusionCommitAcceptTransaction::TRANSACTIONTYPE,
+        DiffusionCommitResignTransaction::TRANSACTIONTYPE,
+      ))
+      ->execute();
+
+    $transaction_value_mapping = array(
+      DiffusionCommitConcernTransaction::TRANSACTIONTYPE => PhabricatorAuditActionConstants::CONCERN,
+      DiffusionCommitAcceptTransaction::TRANSACTIONTYPE => PhabricatorAuditActionConstants::ACCEPT,
+      DiffusionCommitResignTransaction::TRANSACTIONTYPE => PhabricatorAuditActionConstants::RESIGN,
+    );
+
+    $commits_by_audit_action = array();
+
+    foreach ($transactions as $transaction) {
+      $transaction_type = $transaction->getTransactionType();
+
+      if (isset($transaction_value_mapping[$transaction_type])) {
+        $audit_action = $transaction_value_mapping[$transaction_type];
+      } else {
+        $audit_action = $transaction->getNewValue();
+      }
+
+      if (!isset($commits_by_audit_action[$audit_action])) {
+        $commits_by_audit_action[$audit_action] = array();
+      }
+
+      $commits_by_audit_action[$audit_action][] = $transaction->getObjectPHID();
+    }
+
+    foreach (array_keys($commits_by_audit_action) as $found_audit_action) {
+      if (!in_array($found_audit_action, $audit_actions)) {
+        unset($commits_by_audit_action[$found_audit_action]);
+      }
+    }
+
+    $matched_audit_action_count = count($commits_by_audit_action);
+
+    // No commits with desired audit action combination.
+    if ($matched_audit_action_count === 0
+      || $matched_audit_action_count !== count($audit_actions)
+    ) {
+      return array();
+    }
+
+    // No point in array intersection, when only one audit action is used.
+    if ($matched_audit_action_count === 1) {
+      return reset($commits_by_audit_action);
+    }
+
+    // Only return commits, that have all of requested audit actions.
+    return call_user_func_array('array_intersect', $commits_by_audit_action);
   }
 
   protected function didFilterResults(array $filtered) {
