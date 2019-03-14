@@ -898,20 +898,35 @@ final class DiffusionCommitQuery
   }
 
   protected function getCommitsWithAuditActions(array $audit_actions) {
-    $transactions = id(new PhabricatorAuditTransactionQuery())
-      ->setViewer($this->getViewer())
-      ->needHandles(false)
-      ->needComments(false)
-      ->withTransactionTypes(array(
-        // Old style.
-        PhabricatorAuditActionConstants::ACTION,
+    $transaction_types = array(
+      // Old style.
+      PhabricatorAuditActionConstants::ACTION,
 
-        // New style.
-        DiffusionCommitConcernTransaction::TRANSACTIONTYPE,
-        DiffusionCommitAcceptTransaction::TRANSACTIONTYPE,
-        DiffusionCommitResignTransaction::TRANSACTIONTYPE,
-      ))
-      ->execute();
+      // New style.
+      DiffusionCommitConcernTransaction::TRANSACTIONTYPE,
+      DiffusionCommitAcceptTransaction::TRANSACTIONTYPE,
+      DiffusionCommitResignTransaction::TRANSACTIONTYPE,
+    );
+
+    // Use direct query (not "PhabricatorAuditTransactionQuery") to avoid creating an object for every commit in the database.
+    $audit_transaction = new PhabricatorAuditTransaction();
+    $audit_transaction_conn_r = $audit_transaction->establishConnection('r');
+
+    $where_clause = array(
+      qsprintf($audit_transaction_conn_r, 'transactionType IN (%Ls)', $transaction_types),
+    );
+
+    $sql = 'SELECT  objectPHID,
+                    newValue,
+                    transactionType
+            FROM %T
+            WHERE %LA';
+
+    $transactions = queryfx_all(
+      $audit_transaction_conn_r,
+      $sql,
+      $audit_transaction->getTableName(),
+      $where_clause);
 
     $transaction_value_mapping = array(
       DiffusionCommitConcernTransaction::TRANSACTIONTYPE => PhabricatorAuditActionConstants::CONCERN,
@@ -921,20 +936,20 @@ final class DiffusionCommitQuery
 
     $commits_by_audit_action = array();
 
-    foreach ($transactions as $transaction) {
-      $transaction_type = $transaction->getTransactionType();
+    foreach ($transactions as $transaction_data) {
+      $transaction_type = $transaction_data['transactionType'];
 
       if (isset($transaction_value_mapping[$transaction_type])) {
         $audit_action = $transaction_value_mapping[$transaction_type];
       } else {
-        $audit_action = $transaction->getNewValue();
+        $audit_action = json_decode($transaction_data['newValue']);
       }
 
       if (!isset($commits_by_audit_action[$audit_action])) {
         $commits_by_audit_action[$audit_action] = array();
       }
 
-      $commits_by_audit_action[$audit_action][] = $transaction->getObjectPHID();
+      $commits_by_audit_action[$audit_action][] = $transaction_data['objectPHID'];
     }
 
     foreach (array_keys($commits_by_audit_action) as $found_audit_action) {
