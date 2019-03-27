@@ -62,7 +62,7 @@ final class DifferentialDoorkeeperRevisionFeedStoryPublisher
         case DifferentialRevisionRequestReviewTransaction::TRANSACTIONTYPE:
         case DifferentialRevisionReviewersTransaction::TRANSACTIONTYPE:
         // Revision diff updated.
-        case DifferentialTransaction::TYPE_UPDATE:
+        case DifferentialRevisionUpdateTransaction::TRANSACTIONTYPE:
           return count($object->getReviewers()) > 0;
           break;
       }
