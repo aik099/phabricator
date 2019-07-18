@@ -92,7 +92,7 @@ final class DiffusionJenkinsHookAPIMethod
 
     // 1. record checkstyle warnings
     $checkstyle_warnings =
-      id(new JenkinsWarnings($job_name, $build_number, 'checkstyleResult'))
+      id(new JenkinsWarnings($job_name, $build_number, 'checkstyle/new'))
       ->get($commit_paths);
     $this->setCommitProperty(
       $commit, 'checkstyle:warnings', $checkstyle_warnings);
@@ -101,7 +101,7 @@ final class DiffusionJenkinsHookAPIMethod
 
     // 2. record pmd warnings
     $pmd_warnings =
-      id(new JenkinsWarnings($job_name, $build_number, 'pmdResult'))
+      id(new JenkinsWarnings($job_name, $build_number, 'pmd/new'))
       ->get($commit_paths);
     $this->setCommitProperty($commit, 'pmd:warnings', $pmd_warnings);
     $pmd_warning_count = $this->computeWarningCount($pmd_warnings);

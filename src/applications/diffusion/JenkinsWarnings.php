@@ -12,11 +12,8 @@ final class JenkinsWarnings {
   }
 
   public function get(array $file_filter) {
-    $response = $this->apiRequest
-      ->setParams(array('tree' => 'warnings[*]'))
-      ->query();
-
-    $raw_warnings = $response->warnings;
+    $response     = $this->apiRequest->query();
+    $raw_warnings = $response->issues;
 
     if (!$raw_warnings) {
       return array();
@@ -40,9 +37,9 @@ final class JenkinsWarnings {
 
       // Decode due https://github.com/squizlabs/PHP_CodeSniffer/issues/315
       $grouped_warnings[$file_name][] = array(
-        'line' => $raw_warning->primaryLineNumber,
+        'line' => $raw_warning->lineStart,
         'message' => $this->decodeMessage($raw_warning->message),
-        'priority' => $raw_warning->priority,
+        'priority' => $raw_warning->severity,
       );
     }
 
