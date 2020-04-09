@@ -242,7 +242,46 @@ final class PhabricatorCommitJIRAIssuesField
   public function getApplicationTransactionTitleForFeed(
     PhabricatorApplicationTransaction $xaction) {
 
-    return $this->getApplicationTransactionTitle($xaction);
+    $old = $xaction->getOldValue();
+    if (!is_array($old)) {
+      $old = array();
+    }
+
+    $new = $xaction->getNewValue();
+    if (!is_array($new)) {
+      $new = array();
+    }
+
+    $add = array_diff($new, $old);
+    $rem = array_diff($old, $new);
+
+    $author_phid = $xaction->getAuthorPHID();
+    $object_phid = $xaction->getObjectPHID();
+
+    if ($add && $rem) {
+      return pht(
+        '%s updated JIRA issue(s) of %s: added %d %s; removed %d %s.',
+        $xaction->renderHandleLink($author_phid),
+        $xaction->renderHandleLink($object_phid),
+        phutil_count($add),
+        implode(', ', $add),
+        phutil_count($rem),
+        implode(', ', $rem));
+    } else if ($add) {
+      return pht(
+        '%s added "%s" JIRA issue(s) to %s.',
+        $xaction->renderHandleLink($author_phid),
+        implode('", "', $add),
+        $xaction->renderHandleLink($object_phid));
+    } else if ($rem) {
+      return pht(
+        '%s removed "%s" JIRA issue(s) from %s.',
+        $xaction->renderHandleLink($author_phid),
+        implode('", "', $rem),
+        $xaction->renderHandleLink($object_phid));
+    }
+
+    return parent::getApplicationTransactionTitleForFeed($xaction);
   }
 
   public function applyApplicationTransactionExternalEffects(
