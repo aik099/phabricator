@@ -239,6 +239,12 @@ final class PhabricatorCommitJIRAIssuesField
     return parent::getApplicationTransactionTitle($xaction);
   }
 
+  public function getApplicationTransactionTitleForFeed(
+    PhabricatorApplicationTransaction $xaction) {
+
+    return $this->getApplicationTransactionTitle($xaction);
+  }
+
   public function applyApplicationTransactionExternalEffects(
     PhabricatorApplicationTransaction $xaction) {
 

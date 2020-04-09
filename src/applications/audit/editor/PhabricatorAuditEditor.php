@@ -705,6 +705,8 @@ final class PhabricatorAuditEditor
         pht("A commit's projects change."),
       PhabricatorAuditTransaction::MAILTAG_COMMENT =>
         pht('Someone comments on a commit.'),
+      PhabricatorAuditTransaction::MAILTAG_TASKS =>
+        pht("A commit's tasks change."),
       PhabricatorAuditTransaction::MAILTAG_OTHER =>
         pht('Other commit activity not listed above occurs.'),
     );

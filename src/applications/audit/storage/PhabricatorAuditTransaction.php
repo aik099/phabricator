@@ -14,6 +14,7 @@ final class PhabricatorAuditTransaction
   const MAILTAG_COMMENT        = 'audit-comment';
   const MAILTAG_COMMIT         = 'audit-commit';
   const MAILTAG_PROJECTS       = 'audit-projects';
+  const MAILTAG_TASKS          = 'audit-tasks';
   const MAILTAG_OTHER          = 'audit-other';
 
   public function getApplicationName() {
@@ -485,6 +486,15 @@ final class PhabricatorAuditTransaction
         break;
       case self::TYPE_COMMIT:
         $tags[] = self::MAILTAG_COMMIT;
+        break;
+      case PhabricatorTransactions::TYPE_CUSTOMFIELD:
+        $jira_issues_field = new PhabricatorCommitJIRAIssuesField();
+
+        if ($this->getMetadataValue('customfield:key') == $jira_issues_field->getFieldKey()) {
+          $tags[] = self::MAILTAG_TASKS;
+        } else {
+          $tags[] = self::MAILTAG_OTHER;
+        }
         break;
       case PhabricatorTransactions::TYPE_EDGE:
         switch ($this->getMetadataValue('edge:type')) {
