@@ -66,6 +66,8 @@ final class HarbormasterNotifyJenkinsBuildStepImplementation
     $uri .= '/subversion/%s/notifyCommit?rev=%s';
 
     $repository_uuid = PhabricatorEnv::getEnvConfig('jenkins.repository-uuid');
+    $user_id = PhabricatorEnv::getEnvConfig('jenkins.user-id');
+    $api_token = PhabricatorEnv::getEnvConfig('jenkins.api-token');
 
     if (empty($repository_uuid)) {
       throw new ConduitException('ERR-UNKNOWN-REPOSITORY');
@@ -79,7 +81,8 @@ final class HarbormasterNotifyJenkinsBuildStepImplementation
     $future = id(new HTTPSFuture($uri, $this->getSvnLookOutput()))
       ->setMethod('POST')
       ->addHeader('Content-Type', 'text/plain;charset=UTF-8')
-      ->setTimeout(30);
+      ->setTimeout(30)
+      ->setHTTPBasicAuthCredentials($user_id, new PhutilOpaqueEnvelope($api_token));
 
     $this->resolveFutures(
       $this->build,
