@@ -153,4 +153,19 @@ abstract class PhabricatorRepositoryCommitChangeParserWorker
     }
   }
 
+  /**
+   * Don't retry parsing cross-project merge commits forever.
+   */
+  public function getMaximumRetryCount() {
+    return 4;
+  }
+
+  /**
+   * See @{method:getMaximumRetryCount} for a description of retry defaults.
+   */
+  public function getWaitBeforeRetry(PhabricatorWorkerTask $task) {
+    $count = $task->getFailureCount();
+    return (5 * 60) * pow(8, $count);
+  }
+
 }
