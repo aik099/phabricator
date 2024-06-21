@@ -75,7 +75,18 @@ final class DiffusionLowLevelParentsQuery
     $parent_commit = $this->getRepository()->getSubversionParentCommit(
       $this->identifier);
 
-    return $parent_commit ? array($parent_commit) : array();
+    if ($parent_commit) {
+      $merged_commits = $this->getRepository()->getSubversionMergedCommits(
+        $this->identifier);
+
+      /*
+       * Same commit could be both parent and merged in a given commit, but
+       * don't remove it, because it will break merge commit detection code.
+       */
+      return array_merge(array($parent_commit), $merged_commits);
+    }
+
+    return array();
   }
 
 }

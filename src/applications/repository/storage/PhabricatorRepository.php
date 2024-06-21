@@ -404,6 +404,32 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     return (int)$log->logentry['revision'];
   }
 
+  public function getSubversionMergedCommits($svn_revision) {
+    $svn_revision = (int)$svn_revision;
+
+    if ($svn_revision <= 1) {
+      return array();
+    }
+
+    list($err, $xml, $stderr) = $this->execRemoteCommand(
+      'log %s --xml --revision %d --use-merge-history --limit 1',
+      $this->getSubversionBaseURI(),
+      $svn_revision);
+
+    if ($err) {
+      return array();
+    }
+
+    $ret = array();
+    $log = new SimpleXMLElement($xml);
+
+    foreach ($log->logentry->logentry as $merged_commit_data) {
+      $ret[] = (int)$merged_commit_data['revision'];
+    }
+
+    return $ret;
+  }
+
   public function attachProjectPHIDs(array $project_phids) {
     $this->projectPHIDs = $project_phids;
     return $this;

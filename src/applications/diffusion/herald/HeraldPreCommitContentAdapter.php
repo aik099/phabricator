@@ -202,22 +202,12 @@ final class HeraldPreCommitContentAdapter extends HeraldPreCommitAdapter {
 
   public function getIsMergeCommit() {
     $repository = $this->getHookEngine()->getRepository();
-    $vcs = $repository->getVersionControlSystem();
-    switch ($vcs) {
-      case PhabricatorRepositoryType::REPOSITORY_TYPE_GIT:
-      case PhabricatorRepositoryType::REPOSITORY_TYPE_MERCURIAL:
-        $parents = id(new DiffusionLowLevelParentsQuery())
-          ->setRepository($repository)
-          ->withIdentifier($this->getObject()->getRefNew())
-          ->execute();
+    $parents = id(new DiffusionLowLevelParentsQuery())
+      ->setRepository($repository)
+      ->withIdentifier($this->getObject()->getRefNew())
+      ->execute();
 
-        return (count($parents) > 1);
-      case PhabricatorRepositoryType::REPOSITORY_TYPE_SVN:
-        // NOTE: For now, we ignore "svn:mergeinfo" at all levels. We might
-        // change this some day, but it's not nearly as clear a signal as
-        // ancestry is in Git/Mercurial.
-        return false;
-    }
+    return (count($parents) > 1);
   }
 
   public function getBranches() {
