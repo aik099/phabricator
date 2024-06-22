@@ -389,11 +389,13 @@ td.cov-I {
 .differential-property-table td.oval {
   background: #ffd0d0;
   width: 50%;
+  white-space: normal; /* allow wrapping on long "svn:mergeinfo" */
 }
 
 .differential-property-table td.nval {
   background: #d0ffd0;
   width: 50%;
+  white-space: normal; /* allow wrapping on long "svn:mergeinfo" */
 }
 
 tr.differential-inline-hidden {
