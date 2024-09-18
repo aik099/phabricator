@@ -43,7 +43,7 @@ final class DifferentialDoorkeeperRevisionFeedStoryPublisher
 
   public function isStoryAboutObjectReview($object) {
     $status = $object->getStatus();
-    $needs_review_status = ArcanistDifferentialRevisionStatus::NEEDS_REVIEW;
+    $needs_review_status = DifferentialRevisionStatus::NEEDS_REVIEW;
     if ($status != $needs_review_status) {
       return false;
     }
