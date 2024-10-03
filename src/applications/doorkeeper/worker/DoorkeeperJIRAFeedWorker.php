@@ -220,8 +220,12 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
     if ($fields) {
       $formatted_fields = array();
       foreach ($fields as $field_name => $field_value) {
+        // Below code makes assumption, that every given field happens to be user selector.
         $formatted_fields[$field_name] = array(
-          'name' => $field_value,
+          // https://developer.atlassian.com/cloud/jira/platform/deprecation-notice-user-privacy-api-migration-guide
+
+          'accountId' => $field_value, // For Jira Cloud (personal data anonymized since 1 Oct 2018).
+          'name' => $field_value, // For Jira Self-Hosted.
         );
       }
 
