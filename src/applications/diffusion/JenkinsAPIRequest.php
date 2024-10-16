@@ -93,7 +93,7 @@ final class JenkinsAPIRequest {
   }
 
   private function buildUrl() {
-    $url = 'http://'.PhabricatorEnv::getEnvConfig('jenkins.host');
+    $url = 'https://'.PhabricatorEnv::getEnvConfig('jenkins.host');
 
     if ($this->jobName) {
       $url .= '/job/'.$this->jobName;
