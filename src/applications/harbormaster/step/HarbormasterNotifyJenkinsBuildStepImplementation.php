@@ -62,7 +62,7 @@ final class HarbormasterNotifyJenkinsBuildStepImplementation
   }
 
   protected function notifySVN() {
-    $uri = 'https://'.PhabricatorEnv::getEnvConfig('jenkins.host');
+    $uri = rtrim(PhabricatorEnv::getEnvConfig('jenkins.base-uri'), '/');
     $uri .= '/subversion/%s/notifyCommit?rev=%s';
 
     $repository_uuid = PhabricatorEnv::getEnvConfig('jenkins.repository-uuid');
