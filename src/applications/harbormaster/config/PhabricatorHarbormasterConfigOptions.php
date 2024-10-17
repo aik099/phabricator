@@ -13,8 +13,9 @@ final class PhabricatorHarbormasterConfigOptions
 
   public function getOptions() {
     return array(
-      $this->newOption('jenkins.host', 'string', null)
-        ->setDescription(pht('Jenkins installation hostname.')),
+      $this->newOption('jenkins.base-uri', 'string', null)
+        ->setDescription(pht('URI where Jenkins is installed.'))
+        ->addExample('http://jenkins.example.com/', pht('Valid Setting')),
       $this->newOption('jenkins.user-id', 'string', null)
         ->setDescription(pht('Username for accessing Jenkins.')),
       $this->newOption('jenkins.api-token', 'string', null)
