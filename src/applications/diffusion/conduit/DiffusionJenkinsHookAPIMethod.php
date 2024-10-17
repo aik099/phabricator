@@ -63,7 +63,7 @@ final class DiffusionJenkinsHookAPIMethod
       throw new ConduitException('ERR_BAD_COMMIT');
     }
 
-    $commit_url = PhabricatorEnv::getEnvConfig('phabricator.base-uri').
+    $commit_url = rtrim(PhabricatorEnv::getEnvConfig('phabricator.base-uri'), '/').
       $drequest->generateURI(array('action' => 'commit', 'stable' => true));
 
     $property = $this->getCommitProperty($commit, 'build-recorded');
