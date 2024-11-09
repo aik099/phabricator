@@ -994,7 +994,7 @@ final class DifferentialRevisionViewController
     $query = id(new DifferentialRevisionQuery())
       ->setViewer($this->getRequest()->getUser())
       ->withIsOpen(true)
-      ->withUpdatedEpochBetween($recent, null)
+      //->withUpdatedEpochBetween($recent, null)
       ->setOrder(DifferentialRevisionQuery::ORDER_MODIFIED)
       ->setLimit(10)
       ->needFlags(true)
