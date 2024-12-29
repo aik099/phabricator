@@ -192,25 +192,18 @@ final class PhabricatorRepositoryCommitHeraldWorker
         ));
     } catch (PhabricatorApplicationTransactionValidationException $ex) {
       // When non-existing JIRA task is used or user can't view it.
-      $applying_inportal_patch = preg_match(
-        '#applying patch from (.+?/browse/([A-Z]+\-\d+)) task#s',
-        $message,
-        $regs
+      $problematic_jira_issues = explode(
+        ', ',
+        $parser->extractJiraIssues($ex->getMessage())
       );
 
-      /*
-       * When applying an In-Portal patch the commit message has 2 Jira issue keys:
-       * - one from Jira, that is connected to this Phabricator (works correctly);
-       * - one from Jira, that isn't connected to this Phabricator (causes this validation error).
-       *
-       * To overcome this:
-       * - remove mentions of problematic Jira issue;
-       * - reparse patched $message.
-       */
-      if ($applying_inportal_patch
-        && strpos($ex->getMessage(), $regs[2]) !== false
-      ) {
-        $this->detectJIRAIssues($repository, $commit, str_replace($regs[0], '', $message));
+      if ($problematic_jira_issues) {
+        /*
+         * 1. Remove mentions of problematic Jira issues.
+         * 2. Reparse patched $message.
+         */
+        $patched_message = str_replace($problematic_jira_issues, '', $message);
+        $this->detectJIRAIssues($repository, $commit, $patched_message);
       }
     }
   }
