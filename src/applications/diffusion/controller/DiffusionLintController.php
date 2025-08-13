@@ -178,8 +178,11 @@ final class DiffusionLintController extends DiffusionController {
     if ($drequest) {
       $branch = $drequest->loadBranch();
 
+      $header = $this->renderPathLinks($drequest, 'lint');
+      array_unshift($header, pht('Lint: '));
+
       $header = id(new PHUIHeaderView())
-        ->setHeader(pht('Lint: %s', $this->renderPathLinks($drequest, 'lint')))
+        ->setHeader($header)
         ->setUser($viewer)
         ->setHeaderIcon('fa-code');
       $actions = $this->buildActionView($drequest);
