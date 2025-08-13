@@ -57,7 +57,7 @@ final class PhabricatorRepositorySchemaSpec
         'path' => 'text',
         'line' => 'uint32',
         'authorPHID' => 'phid?',
-        'code' => 'text32',
+        'code' => 'text255',
         'severity' => 'text16',
         'name' => 'text255',
         'description' => 'text',
