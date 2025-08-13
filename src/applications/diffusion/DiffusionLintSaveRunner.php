@@ -118,6 +118,7 @@ final class DiffusionLintSaveRunner extends Phobject {
     }
 
     $count = 0;
+    $has_errors = false;
 
     $files = array();
     foreach ($all_files as $file => $val) {
@@ -133,13 +134,23 @@ final class DiffusionLintSaveRunner extends Phobject {
       $files[$file] = $file;
 
       if (count($files) >= $this->chunkSize) {
-        $this->runArcLint($files);
+        if (!$this->runArcLint($files)) {
+          $has_errors = true;
+        }
         $files = array();
       }
     }
 
-    $this->runArcLint($files);
+    if (!$this->runArcLint($files)) {
+      $has_errors = true;
+    }
+
     $this->saveLintMessages();
+
+    // Don't remember the lint commit, when linters failed to run.
+    if ($has_errors) {
+      return $count;
+    }
 
     $this->lintCommit = $api->getUnderlyingWorkingCopyRevision();
     $this->branch->setLintCommit($this->lintCommit);
@@ -156,7 +167,7 @@ final class DiffusionLintSaveRunner extends Phobject {
 
   private function runArcLint(array $files) {
     if (!$files) {
-      return;
+      return true;
     }
 
     echo '.';
@@ -208,7 +219,11 @@ final class DiffusionLintSaveRunner extends Phobject {
 
     } catch (Exception $ex) {
       fprintf(STDERR, $ex->getMessage()."\n");
+
+      return false;
     }
+
+    return true;
   }
 
 
