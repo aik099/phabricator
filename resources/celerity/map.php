@@ -7,7 +7,7 @@
  */
 return array(
   'names' => array(
-    'core.pkg.css' => '1664b6d7',
+    'core.pkg.css' => 'e2460e8f',
     'core.pkg.js' => '3bbe23c6',
     'darkconsole.pkg.js' => 'e7393ebb',
     'differential.pkg.css' => '02273347',
@@ -126,7 +126,7 @@ return array(
     'rsrc/css/phui/calendar/phui-calendar-month.css' => '476be7e0',
     'rsrc/css/phui/calendar/phui-calendar.css' => 'ccabe893',
     'rsrc/css/phui/phui-action-header-view.css' => '89c497e7',
-    'rsrc/css/phui/phui-action-list.css' => '6fe570a8',
+    'rsrc/css/phui/phui-action-list.css' => '4f4d09f2',
     'rsrc/css/phui/phui-action-panel.css' => '3ee9afd5',
     'rsrc/css/phui/phui-box.css' => '7b3a2eed',
     'rsrc/css/phui/phui-button.css' => 'de610129',
@@ -235,8 +235,6 @@ return array(
     'rsrc/externals/raphael/g.raphael.js' => '40dde778',
     'rsrc/externals/raphael/g.raphael.line.js' => '40da039e',
     'rsrc/externals/raphael/raphael.js' => '51ee6b43',
-    'rsrc/externals/zeroclipboard/ZeroClipboard.js' => '35f08060',
-    'rsrc/externals/zeroclipboard/ZeroClipboard.swf' => 'f6b45746',
     'rsrc/favicons/apple-touch-icon-120x120.png' => '43742962',
     'rsrc/favicons/apple-touch-icon-152x152.png' => '669eaec3',
     'rsrc/favicons/apple-touch-icon-76x76.png' => 'ecdef672',
@@ -366,7 +364,7 @@ return array(
     'rsrc/js/application/diffusion/behavior-audit-preview.js' => 'd835b03a',
     'rsrc/js/application/diffusion/behavior-commit-branches.js' => 'bdaf4d04',
     'rsrc/js/application/diffusion/behavior-commit-graph.js' => '9007c197',
-    'rsrc/js/application/diffusion/behavior-copy-fix-message.js' => 'daece37a',
+    'rsrc/js/application/diffusion/behavior-copy-fix-message.js' => '851fcacc',
     'rsrc/js/application/diffusion/behavior-jump-to.js' => '73d09eef',
     'rsrc/js/application/diffusion/behavior-load-blame.js' => '42126667',
     'rsrc/js/application/diffusion/behavior-locate-file.js' => '6d3e1947',
@@ -573,7 +571,7 @@ return array(
     'javelin-behavior-differential-user-select' => 'a8d8459d',
     'javelin-behavior-diffusion-commit-branches' => 'bdaf4d04',
     'javelin-behavior-diffusion-commit-graph' => '9007c197',
-    'javelin-behavior-diffusion-copy-fix-message' => 'daece37a',
+    'javelin-behavior-diffusion-copy-fix-message' => '851fcacc',
     'javelin-behavior-diffusion-jump-to' => '73d09eef',
     'javelin-behavior-diffusion-locate-file' => '6d3e1947',
     'javelin-behavior-diffusion-pull-lastmodified' => '2b228192',
@@ -709,7 +707,7 @@ return array(
     'paste-css' => 'eb997ddd',
     'path-typeahead' => 'f7fc67ec',
     'people-profile-css' => '25970776',
-    'phabricator-action-list-view-css' => '6fe570a8',
+    'phabricator-action-list-view-css' => '4f4d09f2',
     'phabricator-application-launch-view-css' => '16ca323f',
     'phabricator-busy' => '59a7976a',
     'phabricator-chatlog-css' => '852140ff',
@@ -831,7 +829,6 @@ return array(
     'tokens-css' => '3d0f239e',
     'typeahead-browse-css' => 'd8581d2c',
     'unhandled-exception-css' => '37d4f9a2',
-    'zeroclipboard' => '35f08060',
   ),
   'requires' => array(
     '01774ab2' => array(
@@ -1473,6 +1470,12 @@ return array(
       'javelin-workflow',
       'phabricator-draggable-list',
     ),
+    '851fcacc' => array(
+      'javelin-behavior',
+      'javelin-dom',
+      'javelin-stratcom',
+      'javelin-util',
+    ),
     '85ea0626' => array(
       'javelin-install',
     ),
@@ -1482,10 +1485,6 @@ return array(
       'javelin-stratcom',
       'phabricator-tooltip',
       'changeset-view-manager',
-    ),
-    '86a13f7f' => array(
-      'aphront-typeahead-control-css',
-      'phui-tag-view-css',
     ),
     '88236f00' => array(
       'javelin-behavior',
@@ -1879,13 +1878,6 @@ return array(
       'javelin-dom',
       'javelin-util',
       'phabricator-shaped-request',
-    ),
-    'daece37a' => array(
-      'javelin-behavior',
-      'javelin-dom',
-      'javelin-stratcom',
-      'javelin-util',
-      'zeroclipboard',
     ),
     'dbbf48b6' => array(
       'javelin-behavior',

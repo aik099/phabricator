@@ -101,15 +101,13 @@
   font-size: 13px;
 }
 
-.device-desktop .phabricator-action-view:hover .phabricator-action-view-item,
-.device-desktop .phabricator-action-view-hover .phabricator-action-view-item {
+.device-desktop .phabricator-action-view:hover .phabricator-action-view-item {
   text-decoration: none;
   background-color: {$sky};
   color: #fff;
 }
 
-.device-desktop .phabricator-action-view:hover .phabricator-action-view-icon,
-.device-desktop .phabricator-action-view-hover .phabricator-action-view-icon {
+.device-desktop .phabricator-action-view:hover .phabricator-action-view-icon {
   color: #fff;
 }
 
