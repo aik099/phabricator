@@ -83,8 +83,6 @@
 }
 
 .device-desktop .phabricator-action-view-href:hover
-  .phabricator-action-view-item,
-.device-desktop .phabricator-action-view-href-hover
   .phabricator-action-view-item {
     text-decoration: none;
     background: rgba({$alphablue}, .08);
@@ -93,8 +91,6 @@
 }
 
 .device-desktop .phabricator-action-view-href:hover
-  .phabricator-action-view-icon,
-.device-desktop .phabricator-action-view-href-hover
   .phabricator-action-view-icon {
     color: {$sky};
 }

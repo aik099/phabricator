@@ -859,9 +859,6 @@ final class DiffusionCommitController extends DiffusionController {
     if (in_array($commit->getAuditStatus(), $watch_audit_status)) {
       Javelin::initBehavior('diffusion-copy-fix-message');
 
-      CelerityAPI::getStaticResourceResponse()
-        ->addContentSecurityPolicyURI('object-src', celerity_get_resource_uri('/rsrc/externals/zeroclipboard/ZeroClipboard.swf'));
-
       list(, $commit_message) = $commit->parseCommitMessage();
       $commit_id = $repository->getMonogram().$commit->getCommitIdentifier();
       $fix_message = '[fixes: '.$commit_id.'] '.$commit_message;
