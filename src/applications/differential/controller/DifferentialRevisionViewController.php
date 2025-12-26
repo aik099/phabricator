@@ -989,7 +989,7 @@ final class DifferentialRevisionViewController
       return array();
     }
 
-    $recent = (PhabricatorTime::getNow() - phutil_units('30 days in seconds'));
+    //$recent = (PhabricatorTime::getNow() - phutil_units('30 days in seconds'));
 
     $query = id(new DifferentialRevisionQuery())
       ->setViewer($this->getRequest()->getUser())
@@ -1023,7 +1023,7 @@ final class DifferentialRevisionViewController
     $viewer = $this->getViewer();
 
     $header = id(new PHUIHeaderView())
-      ->setHeader(pht('Recent Similar Revisions'));
+      ->setHeader(pht('Similar Revisions'));
 
     return id(new DifferentialRevisionListView())
       ->setViewer($viewer)

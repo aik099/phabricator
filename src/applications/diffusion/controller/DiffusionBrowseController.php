@@ -945,13 +945,13 @@ final class DiffusionBrowseController extends DiffusionController {
       return null;
     }
 
-    $recent = (PhabricatorTime::getNow() - phutil_units('30 days in seconds'));
+    //$recent = (PhabricatorTime::getNow() - phutil_units('30 days in seconds'));
 
     $revisions = id(new DifferentialRevisionQuery())
       ->setViewer($viewer)
       ->withPath($repository->getID(), $path_id)
       ->withIsOpen(true)
-      ->withUpdatedEpochBetween($recent, null)
+      //->withUpdatedEpochBetween($recent, null)
       ->setOrder(DifferentialRevisionQuery::ORDER_MODIFIED)
       ->setLimit(10)
       ->needActiveDiffs(true)
@@ -965,7 +965,7 @@ final class DiffusionBrowseController extends DiffusionController {
     }
 
     $header = id(new PHUIHeaderView())
-      ->setHeader(pht('Recently Open Revisions'));
+      ->setHeader(pht('Open Revisions'));
 
     $list = id(new DifferentialRevisionListView())
       ->setViewer($viewer)
