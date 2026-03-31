@@ -104,11 +104,6 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
     $publisher = $this->getPublisher();
     $base_uri = PhabricatorEnv::getEnvConfig('phabricator.base-uri');
 
-    preg_match(
-      '/^(.*?): (.*)$/',
-      $publisher->getObjectTitle($object),
-      $regs);
-
     $icon_uri = celerity_get_resource_uri('rsrc/favicons/favicon-16x16.png');
 
     $post_data = array(
@@ -120,8 +115,12 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
       'relationship' => 'implemented in',
       'object' => array(
         'url' => $publisher->getObjectURI($object),
-        'title' => $regs[1], // Object identifier (e.g. D3).
-        'summary' => $regs[2], // Object title.
+        /*
+         * Don't split object title between "title" and "summary",
+         * because Jira Cloud doesn't display "summary" in the UI
+         * (see https://jira.atlassian.com/browse/JRACLOUD-74599).
+         */
+        'title' => $publisher->getObjectTitle($object),
         'icon' => array(
           'url16x16' => $icon_uri,
           'title' => 'Phabricator',
