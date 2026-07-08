@@ -457,6 +457,7 @@ phutil_register_library_map(array(
     'DifferentialCommitsField' => 'applications/differential/customfield/DifferentialCommitsField.php',
     'DifferentialCommitsSearchEngineAttachment' => 'applications/differential/engineextension/DifferentialCommitsSearchEngineAttachment.php',
     'DifferentialConduitAPIMethod' => 'applications/differential/conduit/DifferentialConduitAPIMethod.php',
+    'DifferentialConfiguredCustomField' => 'applications/differential/field/DifferentialConfiguredCustomField.php',
     'DifferentialConflictsCommitMessageField' => 'applications/differential/field/DifferentialConflictsCommitMessageField.php',
     'DifferentialController' => 'applications/differential/controller/DifferentialController.php',
     'DifferentialCoreCustomField' => 'applications/differential/customfield/DifferentialCoreCustomField.php',
@@ -5981,6 +5982,10 @@ phutil_register_library_map(array(
     'DifferentialCommitsField' => 'DifferentialCustomField',
     'DifferentialCommitsSearchEngineAttachment' => 'PhabricatorSearchEngineAttachment',
     'DifferentialConduitAPIMethod' => 'ConduitAPIMethod',
+    'DifferentialConfiguredCustomField' => array(
+      'DifferentialCustomField',
+      'PhabricatorStandardCustomFieldInterface',
+    ),
     'DifferentialConflictsCommitMessageField' => 'DifferentialCommitMessageField',
     'DifferentialController' => 'PhabricatorController',
     'DifferentialCoreCustomField' => 'DifferentialCustomField',

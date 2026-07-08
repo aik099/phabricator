@@ -55,6 +55,15 @@ final class PhabricatorDifferentialConfigOptions
       );
     }
 
+    $fields_example = array(
+      'mycompany.estimated-hours' => array(
+        'name' => pht('Estimated Hours'),
+        'type' => 'int',
+        'caption' => pht('Estimated number of hours this will take.'),
+      ),
+    );
+    $fields_json = id(new PhutilJSON())->encodeFormatted($fields_example);
+
     $inline_description = $this->deformat(
       pht(<<<EOHELP
 To include patches inline in email bodies, set this option to a positive
@@ -80,6 +89,14 @@ EOHELP
             "Select and reorder revision fields.\n\n".
             "NOTE: This feature is under active development and subject ".
             "to change.")),
+      $this->newOption('differential.custom-field-definitions', 'wild', array())
+        ->setSummary(pht('Custom Differential fields.'))
+        ->setDescription(
+          pht(
+            'Array of custom fields for Differential revisions. For details '.
+            'on adding custom fields to Differential, see "Configuring '.
+            'Custom Fields" in the documentation.'))
+        ->addExample($fields_json, pht('Valid setting')),
       $this->newOption('differential.require-test-plan-field', 'bool', true)
         ->setBoolOptions(
           array(
