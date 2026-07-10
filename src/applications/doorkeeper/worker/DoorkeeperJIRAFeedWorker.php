@@ -106,6 +106,13 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
 
     $icon_uri = celerity_get_resource_uri('rsrc/favicons/favicon-16x16.png');
 
+    $object_title = $publisher->getObjectTitle($object);
+
+    if ($this->shouldIncludeDateInPostedLink()) {
+      $object_title = date('Y-M-d H:i', $publisher->getObjectDate($object)) .
+        ' - ' . $object_title;
+    }
+
     $post_data = array(
       'globalId' => 'appId=ph_'.crc32($base_uri).'&phid='.$object->getPHID(),
       'application' => array(
@@ -120,7 +127,7 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
          * because Jira Cloud doesn't display "summary" in the UI
          * (see https://jira.atlassian.com/browse/JRACLOUD-74599).
          */
-        'title' => $publisher->getObjectTitle($object),
+        'title' => $object_title,
         'icon' => array(
           'url16x16' => $icon_uri,
           'title' => 'Phabricator',
@@ -340,6 +347,10 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
 
   private function shouldPostLink() {
     return $this->getProvider()->shouldCreateJIRALink();
+  }
+
+  private function shouldIncludeDateInPostedLink() {
+    return $this->getProvider()->shouldIncludeDateInJIRALink();
   }
 
   private function renderStoryText() {

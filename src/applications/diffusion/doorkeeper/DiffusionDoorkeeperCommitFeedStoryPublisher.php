@@ -188,6 +188,10 @@ final class DiffusionDoorkeeperCommitFeedStoryPublisher
     return "{$name}: {$title}";
   }
 
+  public function getObjectDate($object) {
+    return $object->getEpoch();
+  }
+
   public function getObjectURI($object) {
     $repository = $object->getRepository();
     $name = $repository->formatCommitName($object->getCommitIdentifier());

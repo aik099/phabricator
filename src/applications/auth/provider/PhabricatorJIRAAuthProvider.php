@@ -82,6 +82,7 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
   const PROPERTY_PUBLIC_KEY = 'oauth1:jira:key:public';
   const PROPERTY_PRIVATE_KEY = 'oauth1:jira:key:private';
   const PROPERTY_REPORT_LINK = 'oauth1:jira:report:link';
+  const PROPERTY_REPORT_LINK_DATE = 'oauth1:jira:report:link_date';
   const PROPERTY_REPORT_COMMENT = 'oauth1:jira:report:comment';
 
 
@@ -116,6 +117,8 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
       self::PROPERTY_JIRA_REJECT_TRANSITION => $request->getStr(self::PROPERTY_JIRA_REJECT_TRANSITION),
       self::PROPERTY_REPORT_LINK =>
         $request->getInt(self::PROPERTY_REPORT_LINK, 0),
+      self::PROPERTY_REPORT_LINK_DATE =>
+        $request->getInt(self::PROPERTY_REPORT_LINK_DATE, 0),
       self::PROPERTY_REPORT_COMMENT =>
         $request->getInt(self::PROPERTY_REPORT_COMMENT, 0),
     );
@@ -306,6 +309,16 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
         ->appendChild(
           id(new AphrontFormCheckboxControl())
             ->addCheckbox(
+              self::PROPERTY_REPORT_LINK_DATE,
+              1,
+              new PHUIRemarkupView(
+                $viewer,
+                pht(
+                  'Specify the object date in the created **Issue Link**.')),
+              $this->shouldIncludeDateInJIRALink()))
+        ->appendChild(
+          id(new AphrontFormCheckboxControl())
+            ->addCheckbox(
               self::PROPERTY_REPORT_COMMENT,
               1,
               new PHUIRemarkupView(
@@ -464,6 +477,10 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
   public function shouldCreateJIRALink() {
     $config = $this->getProviderConfig();
     return $config->getProperty(self::PROPERTY_REPORT_LINK, true);
+  }
+  public function shouldIncludeDateInJIRALink() {
+    $config = $this->getProviderConfig();
+    return $config->getProperty(self::PROPERTY_REPORT_LINK_DATE, false);
   }
 
   public function shouldCreateJIRAComment() {

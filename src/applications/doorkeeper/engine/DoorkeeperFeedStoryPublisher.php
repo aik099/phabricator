@@ -96,6 +96,7 @@ abstract class DoorkeeperFeedStoryPublisher extends Phobject {
   abstract public function getPassiveUserPHIDs($object);
   abstract public function getCCUserPHIDs($object);
   abstract public function getObjectTitle($object);
+  abstract public function getObjectDate($object);
   abstract public function getObjectURI($object);
   abstract public function getObjectDescription($object);
   abstract public function isObjectClosed($object);

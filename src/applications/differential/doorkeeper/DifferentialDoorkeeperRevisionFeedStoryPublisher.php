@@ -128,6 +128,10 @@ final class DifferentialDoorkeeperRevisionFeedStoryPublisher
     return "D{$id}: {$title}";
   }
 
+  public function getObjectDate($object) {
+    return $object->getDateCreated();
+  }
+
   public function getObjectURI($object) {
     return PhabricatorEnv::getProductionURI('/D'.$object->getID());
   }
