@@ -140,14 +140,12 @@ final class DiffusionDoorkeeperCommitFeedStoryPublisher
   }
 
   public function getObjectTitle($object) {
-    $prefix = $this->getTitlePrefix($object);
-
     $repository = $object->getRepository();
     $name = $repository->formatCommitName($object->getCommitIdentifier());
 
     $title = $object->getSummary();
 
-    return ltrim("{$prefix} {$name}: {$title}");
+    return "{$name}: {$title}";
   }
 
   public function getObjectURI($object) {
