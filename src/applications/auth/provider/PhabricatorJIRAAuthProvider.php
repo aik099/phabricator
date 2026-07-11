@@ -314,7 +314,8 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
               new PHUIRemarkupView(
                 $viewer,
                 pht(
-                  'Specify the object date in the created **Issue Link**.')),
+                  '**Add the object date** (in the UTC timezone) to '.
+                  'the created Issue Link.')),
               $this->shouldIncludeDateInJIRALink()))
         ->appendChild(
           id(new AphrontFormCheckboxControl())
