@@ -109,13 +109,9 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
     $object_title = $publisher->getObjectTitle($object);
 
     if ($this->shouldIncludeDateInPostedLink()) {
-      /** @var PhutilCalendarAbsoluteDateTime $object_date */
-      $object_date = PhutilCalendarAbsoluteDateTime::newFromEpoch(
-        $publisher->getObjectDate($object)
-      );
-      $object_date_formatted = $object_date->newPHPDateTime()
-        ->format('Y-M-d H:i');
-      $object_title = $object_date_formatted . ' - ' . $object_title;
+      // The timezone comes from "phabricator.timezone" setting in config.
+      $object_title = date('Y-M-d H:i', $publisher->getObjectDate($object)) .
+        ' - ' . $object_title;
     }
 
     $post_data = array(
