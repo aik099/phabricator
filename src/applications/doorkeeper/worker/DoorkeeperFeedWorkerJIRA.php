@@ -115,7 +115,8 @@ final class DoorkeeperFeedWorkerJIRA extends DoorkeeperFeedWorker {
           'title' => $regs[1], // Application name (e.g. Differential).
         ),
         'status' => array(
-          'resolved' => $publisher->isObjectClosed($object)
+          'icon' => new stdClass(),
+          'resolved' => $publisher->isObjectClosed($object),
         ),
       ),
     );
