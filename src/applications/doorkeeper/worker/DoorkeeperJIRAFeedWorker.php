@@ -134,6 +134,7 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
           'title' => 'Phabricator',
         ),
         'status' => array(
+          'icon' => new stdClass(),
           'resolved' => $publisher->isObjectClosed($object),
         ),
       ),
