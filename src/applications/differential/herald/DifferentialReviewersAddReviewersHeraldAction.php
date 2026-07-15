@@ -17,6 +17,10 @@ final class DifferentialReviewersAddReviewersHeraldAction
     return $this->applyReviewers($effect->getTarget(), $is_blocking = false);
   }
 
+  protected function shouldExcludeRevisionAuthor() {
+    return true;
+  }
+
   public function getHeraldActionStandardType() {
     return self::STANDARD_PHID_LIST;
   }

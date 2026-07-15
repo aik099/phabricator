@@ -15,25 +15,29 @@ abstract class DifferentialReviewersHeraldAction
     return ($object instanceof DifferentialRevision);
   }
 
+  abstract protected function shouldExcludeRevisionAuthor();
+
   protected function applyReviewers(array $phids, $is_blocking) {
     $adapter = $this->getAdapter();
     $object = $adapter->getObject();
 
     $phids = array_fuse($phids);
 
-    // Don't try to add revision authors as reviewers.
-    $authors = array();
-    foreach ($phids as $phid) {
-      if ($phid == $object->getAuthorPHID()) {
-        $authors[] = $phid;
-        unset($phids[$phid]);
+    if ($this->shouldExcludeRevisionAuthor()) {
+      // Don't try to add revision authors as reviewers.
+      $authors = array();
+      foreach ($phids as $phid) {
+        if ($phid == $object->getAuthorPHID()) {
+          $authors[] = $phid;
+          unset($phids[$phid]);
+        }
       }
-    }
 
-    if ($authors) {
-      $this->logEffect(self::DO_AUTHORS, $authors);
-      if (!$phids) {
-        return;
+      if ($authors) {
+        $this->logEffect(self::DO_AUTHORS, $authors);
+        if (!$phids) {
+          return;
+        }
       }
     }
 

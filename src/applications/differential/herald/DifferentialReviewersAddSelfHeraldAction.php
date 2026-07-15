@@ -18,6 +18,10 @@ final class DifferentialReviewersAddSelfHeraldAction
     return $this->applyReviewers(array($phid), $is_blocking = false);
   }
 
+  protected function shouldExcludeRevisionAuthor() {
+    return false;
+  }
+
   public function getHeraldActionStandardType() {
     return self::STANDARD_NONE;
   }
