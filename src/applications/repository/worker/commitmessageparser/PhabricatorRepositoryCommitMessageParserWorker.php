@@ -239,6 +239,12 @@ abstract class PhabricatorRepositoryCommitMessageParserWorker
           $revision->getID(),
           $commit->getPHID());
 
+        $this->inheritCustomFieldsFromRevision(
+          $revision,
+          $commit,
+          $actor,
+          $acting_as_phid);
+
         $should_close = !$revision->isPublished() && $should_autoclose;
         if ($should_close) {
           $type_close = DifferentialRevisionCloseTransaction::TRANSACTIONTYPE;
@@ -454,6 +460,52 @@ abstract class PhabricatorRepositoryCommitMessageParserWorker
 
       $editor->applyTransactions($task, $xactions);
     }
+  }
+
+  /**
+   * Keeps a commit's "Co-authored with AI" value synced to its revision's.
+   */
+  private function inheritCustomFieldsFromRevision(
+    DifferentialRevision $revision,
+    PhabricatorRepositoryCommit $commit,
+    PhabricatorUser $actor,
+    $acting_as_phid) {
+
+    $revision_field = id(new DifferentialCoAuthoredWithAIField())
+      ->setViewer($actor)
+      ->setObject($revision);
+
+    $commit_field = id(new PhabricatorCommitCoAuthoredWithAIField())
+      ->setViewer($actor)
+      ->setObject($commit);
+
+    id(new PhabricatorCustomFieldStorageQuery())
+      ->addField($revision_field)
+      ->addField($commit_field)
+      ->execute();
+
+    $revision_field_value = $revision_field->getValueForStorage();
+    if ($revision_field_value === null) {
+      return;
+    }
+
+    $commit_field_value = $commit_field->getOldValueForApplicationTransactions();
+
+    $xactions = array();
+    $xactions[] = id(new PhabricatorAuditTransaction())
+      ->setTransactionType(PhabricatorTransactions::TYPE_CUSTOMFIELD)
+      ->setMetadataValue('customfield:key', $commit_field->getFieldKey())
+      ->setOldValue($commit_field_value)
+      ->setNewValue($revision_field_value);
+
+    $editor = id(new PhabricatorAuditEditor())
+      ->setActor($actor)
+      ->setActingAsPHID($acting_as_phid)
+      ->setContinueOnNoEffect(true)
+      ->setContinueOnMissingFields(true)
+      ->setContentSource($this->newContentSource());
+
+    $editor->applyTransactions($commit, $xactions);
   }
 
   private function loadActingUser(PhabricatorUser $viewer, $user_phid) {

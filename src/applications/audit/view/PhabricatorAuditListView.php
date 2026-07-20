@@ -15,6 +15,7 @@ final class PhabricatorAuditListView extends AphrontView {
   private $inverseMentionCommits = array();
 
   private $timeEvents = array();
+  private $coAuthoredWithAI = array();
 
   public function setNoDataString($no_data_string) {
     $this->noDataString = $no_data_string;
@@ -95,6 +96,7 @@ final class PhabricatorAuditListView extends AphrontView {
     $this->prepareAuditorInformation();
     $this->prepareInverseMentions();
     $this->prepareTimeTracking();
+    $this->prepareCustomFields();
 
     $modification_dates = $this->getCommitsDateModified();
 
@@ -155,6 +157,14 @@ final class PhabricatorAuditListView extends AphrontView {
         ))
       ->producePhutilSafeHTML();
 
+    $ai_icon = id(new PHUIIconView())
+      ->setIcon('fa-android indigo')
+      ->addSigil('has-tooltip')
+      ->setMetadata(
+        array(
+          'tip' => pht('Co-authored with AI'),
+        ));
+
     $list = new PHUIObjectItemListView();
     foreach ($this->commits as $commit) {
       $commit_phid = $commit->getPHID();
@@ -198,6 +208,10 @@ final class PhabricatorAuditListView extends AphrontView {
           ));
 
         $item->addAttribute($actual_fixed_by_icon);
+      }
+
+      if (idx($this->coAuthoredWithAI, $commit_phid)) {
+        $item->addAttribute(clone $ai_icon);
       }
 
       $flag = $commit->getFlag($viewer);
@@ -438,6 +452,34 @@ final class PhabricatorAuditListView extends AphrontView {
         PhabricatorTransactions::TYPE_EDGE,
       ))
       ->execute();
+  }
+
+  /**
+   * Populates $this->coAuthoredWithAI (PHID => bool) via one batched query.
+   */
+  private function prepareCustomFields() {
+    if (!$this->commits) {
+      return;
+    }
+
+    $viewer = $this->getViewer();
+
+    $target_fields = array();
+    foreach ($this->commits as $commit_phid => $commit) {
+      $field = id(new PhabricatorCommitCoAuthoredWithAIField())
+        ->setViewer($viewer)
+        ->setObject($commit);
+
+      $target_fields[$commit_phid] = $field;
+    }
+
+    id(new PhabricatorCustomFieldStorageQuery())
+      ->addFields($target_fields)
+      ->execute();
+
+    foreach ($target_fields as $commit_phid => $field) {
+      $this->coAuthoredWithAI[$commit_phid] = (bool)$field->getValue();
+    }
   }
 
   private function prepareTimeTracking() {

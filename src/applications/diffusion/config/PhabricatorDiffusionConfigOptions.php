@@ -27,6 +27,7 @@ final class PhabricatorDiffusionConfigOptions
       new PhabricatorCommitBranchesField(),
       new PhabricatorCommitTagsField(),
       new PhabricatorCommitMergedCommitsField(),
+      new PhabricatorCommitCoAuthoredWithAIField(),
     );
 
     $default_fields = array();

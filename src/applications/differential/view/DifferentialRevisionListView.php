@@ -11,6 +11,7 @@ final class DifferentialRevisionListView extends AphrontView {
   private $noBox;
   private $background = null;
   private $unlandedDependencies = array();
+  private $coAuthoredWithAI = array();
 
   public function setUnlandedDependencies(array $unlanded_dependencies) {
     $this->unlandedDependencies = $unlanded_dependencies;
@@ -49,6 +50,8 @@ final class DifferentialRevisionListView extends AphrontView {
 
   public function render() {
     $viewer = $this->getViewer();
+
+    $this->prepareCustomFields();
 
     $fresh = PhabricatorEnv::getEnvConfig('differential.days-fresh');
     if ($fresh) {
@@ -94,6 +97,14 @@ final class DifferentialRevisionListView extends AphrontView {
 
     $handles = $viewer->loadHandles($handle_phids);
 
+    $ai_icon = id(new PHUIIconView())
+      ->setIcon('fa-android indigo')
+      ->addSigil('has-tooltip')
+      ->setMetadata(
+        array(
+          'tip' => pht('Co-authored with AI'),
+        ));
+
     $list = new PHUIObjectItemListView();
     foreach ($this->revisions as $key => $revision) {
       $item = id(new PHUIObjectItemView())
@@ -138,6 +149,10 @@ final class DifferentialRevisionListView extends AphrontView {
       $size = $this->renderRevisionSize($revision);
       if ($size !== null) {
         $item->addAttribute($size);
+      }
+
+      if (idx($this->coAuthoredWithAI, $phid)) {
+        $item->addAttribute(clone $ai_icon);
       }
 
       if ($revision->getHasDraft($viewer)) {
@@ -228,6 +243,34 @@ final class DifferentialRevisionListView extends AphrontView {
     }
 
     return $list;
+  }
+
+  /**
+   * Populates $this->coAuthoredWithAI (PHID => bool) via one batched query.
+   */
+  private function prepareCustomFields() {
+    if (!$this->revisions) {
+      return;
+    }
+
+    $viewer = $this->getViewer();
+
+    $target_fields = array();
+    foreach ($this->revisions as $revision) {
+      $field = id(new DifferentialCoAuthoredWithAIField())
+        ->setViewer($viewer)
+        ->setObject($revision);
+
+      $target_fields[$revision->getPHID()] = $field;
+    }
+
+    id(new PhabricatorCustomFieldStorageQuery())
+      ->addFields($target_fields)
+      ->execute();
+
+    foreach ($target_fields as $phid => $field) {
+      $this->coAuthoredWithAI[$phid] = (bool)$field->getValue();
+    }
   }
 
   private function renderRevisionSize(DifferentialRevision $revision) {
