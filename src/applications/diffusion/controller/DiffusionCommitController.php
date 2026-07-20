@@ -148,6 +148,9 @@ final class DiffusionCommitController extends DiffusionController {
       }
     }
 
+    $detail_list = null;
+    $details = null;
+
     if ($is_foreign) {
       $subpath = $commit_data->getCommitDetail('svn-subpath');
 
@@ -161,6 +164,15 @@ final class DiffusionCommitController extends DiffusionController {
           "didn't affect the tracked subdirectory ('%s'), so no ".
           "information is available.",
           $subpath));
+
+      $commit_tag = $this->renderCommitHashTag($drequest);
+      $header = id(new PHUIHeaderView())
+        ->setHeader(pht('Commit Not Tracked'))
+        ->setHeaderIcon('fa-code-fork')
+        ->addTag($commit_tag);
+
+      $curtain = $this->buildCurtain($commit, $repository);
+      $subheader = $this->buildSubheaderView($commit, $commit_data);
     } else {
       $engine = PhabricatorMarkupEngine::newDifferentialMarkupEngine();
       $engine->setConfig('viewer', $viewer);
