@@ -187,6 +187,14 @@ final class PhabricatorAuditListView extends AphrontView {
         ->setHref($commit_link)
         ->setDisabled($commit->isUnreachable());
 
+      if ($commit->hasLineCounts()) {
+        $item->addAttribute(
+          id(new PhabricatorDiffSizeIconView())
+            ->setAddedLineCount($commit->getAddedLineCount())
+            ->setRemovedLineCount($commit->getRemovedLineCount())
+            ->render());
+      }
+
       // Add icon indicating, that this commit is a fix commit.
       if ($commit_prefix) {
         $actual_fix_icon = clone $fix_icon;

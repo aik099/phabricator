@@ -41,6 +41,15 @@ final class PhabricatorRepositoryCommit
   const IMPORTED_HERALD = 8;
   const IMPORTED_ALL = 15;
 
+  // This is intentionally not included in IMPORTED_ALL/isImported(): it is
+  // an optional enrichment step, not a prerequisite for treating a commit
+  // as usable, so existing installs upgrading to this flag should not have
+  // every already-imported commit suddenly read as "still importing".
+  const IMPORTED_LINECOUNT = 16;
+
+  const DETAIL_LINES_ADDED = 'lines.added';
+  const DETAIL_LINES_REMOVED = 'lines.removed';
+
   const IMPORTED_CLOSEABLE = 1024;
   const IMPORTED_UNREACHABLE = 2048;
 
@@ -183,6 +192,23 @@ final class PhabricatorRepositoryCommit
 
   public function getCommitData() {
     return $this->assertAttached($this->commitData);
+  }
+
+  public function hasLineCounts() {
+    return ($this->getCommitData()->getCommitDetail(self::DETAIL_LINES_ADDED)
+      !== null);
+  }
+
+  public function getAddedLineCount() {
+    return (int)$this->getCommitData()->getCommitDetail(
+      self::DETAIL_LINES_ADDED,
+      0);
+  }
+
+  public function getRemovedLineCount() {
+    return (int)$this->getCommitData()->getCommitDetail(
+      self::DETAIL_LINES_REMOVED,
+      0);
   }
 
   public function attachAudits(array $audits) {

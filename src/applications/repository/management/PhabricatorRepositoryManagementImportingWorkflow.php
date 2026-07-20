@@ -67,6 +67,9 @@ final class PhabricatorRepositoryManagementImportingWorkflow
           if (!($status & PhabricatorRepositoryCommit::IMPORTED_CHANGE)) {
             $need[] = pht('Change');
           }
+          if (!($status & PhabricatorRepositoryCommit::IMPORTED_LINECOUNT)) {
+            $need[] = pht('Line Count');
+          }
           if (!($status & PhabricatorRepositoryCommit::IMPORTED_OWNERS)) {
             $need[] = pht('Owners');
           }

@@ -72,6 +72,13 @@ final class PhabricatorRepositoryManagementReparseWorkflow
               'old commits!)'),
           ),
           array(
+            'name'     => 'linecount',
+            'help'     => pht(
+              'Recompute added/removed line counts (runs a diff against '.
+              'the preceding revision, which may be slow for large '.
+              'repositories).'),
+          ),
+          array(
             'name'     => 'force',
             'short'    => 'f',
             'help'     => pht('Act noninteractively, without prompting.'),
@@ -107,6 +114,7 @@ final class PhabricatorRepositoryManagementReparseWorkflow
     $reparse_change = $args->getArg('change');
     $reparse_herald = $args->getArg('herald');
     $reparse_owners = $args->getArg('owners');
+    $reparse_linecount = $args->getArg('linecount');
     $reparse_what = $args->getArg('revision');
     $force = $args->getArg('force');
     $force_local = $args->getArg('force-local');
@@ -132,7 +140,8 @@ final class PhabricatorRepositoryManagementReparseWorkflow
     $any_step = ($reparse_message ||
       $reparse_change ||
       $reparse_herald ||
-      $reparse_owners);
+      $reparse_owners ||
+      $reparse_linecount);
 
     if ($any_step && $importing) {
       throw new PhutilArgumentUsageException(
@@ -147,12 +156,13 @@ final class PhabricatorRepositoryManagementReparseWorkflow
     } else if (!$any_step && !$importing) {
       throw new PhutilArgumentUsageException(
         pht(
-          'Specify which steps to reparse with %s, or %s, %s, %s, or %s.',
+          'Specify which steps to reparse with %s, or %s, %s, %s, %s, or %s.',
           '--importing',
           '--message',
           '--change',
           '--herald',
-          '--owners'));
+          '--owners',
+          '--linecount'));
     }
 
     $min_timestamp = false;
@@ -248,12 +258,15 @@ final class PhabricatorRepositoryManagementReparseWorkflow
         // Find the first missing import step and queue that up.
         $reparse_message = false;
         $reparse_change = false;
+        $reparse_linecount = false;
         $reparse_owners = false;
         $reparse_herald = false;
         if (!($status & PhabricatorRepositoryCommit::IMPORTED_MESSAGE)) {
           $reparse_message = true;
         } else if (!($status & PhabricatorRepositoryCommit::IMPORTED_CHANGE)) {
           $reparse_change = true;
+        } else if (!($status & PhabricatorRepositoryCommit::IMPORTED_LINECOUNT)) {
+          $reparse_linecount = true;
         } else if (!($status & PhabricatorRepositoryCommit::IMPORTED_OWNERS)) {
           $reparse_owners = true;
         } else if (!($status & PhabricatorRepositoryCommit::IMPORTED_HERALD)) {
@@ -294,6 +307,10 @@ final class PhabricatorRepositoryManagementReparseWorkflow
 
       if ($reparse_herald) {
         $classes[] = 'PhabricatorRepositoryCommitHeraldWorker';
+      }
+
+      if ($reparse_linecount) {
+        $classes[] = 'PhabricatorRepositoryCommitLineCountParserWorker';
       }
 
       if ($reparse_owners) {

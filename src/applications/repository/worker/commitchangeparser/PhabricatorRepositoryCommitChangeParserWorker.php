@@ -106,6 +106,12 @@ abstract class PhabricatorRepositoryCommitChangeParserWorker
         array(
           'commitID' => $commit->getID(),
         ));
+
+      $this->queueTask(
+        'PhabricatorRepositoryCommitLineCountParserWorker',
+        array(
+          'commitID' => $commit->getID(),
+        ));
     }
   }
 

@@ -278,62 +278,10 @@ final class DifferentialRevisionListView extends AphrontView {
       return null;
     }
 
-    $size = array();
-
-    $glyphs = $revision->getRevisionScaleGlyphs();
-    $plus_count = 0;
-    for ($ii = 0; $ii < 7; $ii++) {
-      $c = $glyphs[$ii];
-
-      switch ($c) {
-        case '+':
-          $size[] = id(new PHUIIconView())
-            ->setIcon('fa-plus');
-          $plus_count++;
-          break;
-        case '-':
-          $size[] = id(new PHUIIconView())
-            ->setIcon('fa-minus');
-          break;
-        default:
-          $size[] = id(new PHUIIconView())
-            ->setIcon('fa-square-o invisible');
-          break;
-      }
-    }
-
-    $n = $revision->getAddedLineCount() + $revision->getRemovedLineCount();
-
-    $classes = array();
-    $classes[] = 'differential-revision-size';
-
-    $tip = array();
-    $tip[] = pht('%s Lines', new PhutilNumber($n));
-
-    if ($plus_count <= 1) {
-      $classes[] = 'differential-revision-small';
-      $tip[] = pht('Smaller Change');
-    }
-
-    if ($plus_count >= 4) {
-      $classes[] = 'differential-revision-large';
-      $tip[] = pht('Larger Change');
-    }
-
-    $tip = phutil_implode_html(" \xC2\xB7 ", $tip);
-
-    return javelin_tag(
-      'span',
-      array(
-        'class' => implode(' ', $classes),
-        'sigil' => 'has-tooltip',
-        'meta' => array(
-          'tip' => $tip,
-          'align' => 'E',
-          'size' => 400,
-        ),
-      ),
-      $size);
+    return id(new PhabricatorDiffSizeIconView())
+      ->setAddedLineCount($revision->getAddedLineCount())
+      ->setRemovedLineCount($revision->getRemovedLineCount())
+      ->render();
   }
 
 }
