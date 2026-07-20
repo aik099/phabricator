@@ -64,6 +64,17 @@ final class DifferentialCoAuthoredWithAIField
     return (bool)$this->getValue();
   }
 
+  public function shouldAppearInHeraldActions() {
+    return true;
+  }
+
+  public function getHeraldActionToggleOptions() {
+    return array(
+      '1' => pht('Check "%s"', $this->getFieldName()),
+      '0' => pht('Uncheck "%s"', $this->getFieldName()),
+    );
+  }
+
   public function readValueFromRequest(AphrontRequest $request) {
     $this->setValue((bool)$request->getBool($this->getFieldKey()));
   }
