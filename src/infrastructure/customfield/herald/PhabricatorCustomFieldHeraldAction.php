@@ -83,7 +83,7 @@ final class PhabricatorCustomFieldHeraldAction extends HeraldAction {
       $value = $effect->getTarget();
     }
 
-    $old_value = $field->getOldValueForApplicationTransactions();
+    $old_value = $field->getValueForStorage();
     $new_value = id(clone $field)
       ->setValueFromApplicationTransactions($value)
       ->getValueForStorage();

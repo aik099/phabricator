@@ -1596,7 +1596,11 @@ abstract class PhabricatorCustomField extends Phobject {
       return $this->proxy->getHeraldActionName();
     }
 
-    return null;
+    if (!$this->shouldAppearInHeraldActions()) {
+      return null;
+    }
+
+    return pht('Set "%s" to', $this->getFieldName());
   }
 
 
@@ -1614,7 +1618,22 @@ abstract class PhabricatorCustomField extends Phobject {
       return $this->proxy->getHeraldActionDescription($value);
     }
 
-    return null;
+    if (!$this->shouldAppearInHeraldActions()) {
+      return null;
+    }
+
+    // NOTE: Match the "checked"/"unchecked" vocabulary a bool-shaped field
+    // already uses in its own getApplicationTransactionTitle(), rather than
+    // generic "set to: 1"/"set to: 0" text.
+    if ($this->getHeraldActionToggleOptions() !== null) {
+      if ($value) {
+        return pht('Check "%s".', $this->getFieldName());
+      }
+
+      return pht('Uncheck "%s".', $this->getFieldName());
+    }
+
+    return pht('Set "%s" to: %s.', $this->getFieldName(), $value);
   }
 
 
@@ -1623,7 +1642,15 @@ abstract class PhabricatorCustomField extends Phobject {
       return $this->proxy->getHeraldActionEffectDescription($value);
     }
 
-    return null;
+    if (!$this->shouldAppearInHeraldActions()) {
+      return null;
+    }
+
+    if ($this->getHeraldActionToggleOptions() !== null) {
+      return $value ? pht('Checked') : pht('Unchecked');
+    }
+
+    return $value;
   }
 
 
