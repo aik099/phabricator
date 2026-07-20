@@ -7,6 +7,7 @@ final class PhabricatorCustomFieldHeraldAction extends HeraldAction {
   const DO_SET_FIELD = 'do.set-custom-field';
 
   private $customField;
+  private $toggleValue;
 
   public function setCustomField(PhabricatorCustomField $custom_field) {
     $this->customField = $custom_field;
@@ -15,6 +16,19 @@ final class PhabricatorCustomFieldHeraldAction extends HeraldAction {
 
   public function getCustomField() {
     return $this->customField;
+  }
+
+  public function setToggleValue($toggle_value) {
+    $this->toggleValue = $toggle_value;
+    return $this;
+  }
+
+  public function getToggleValue() {
+    return $this->toggleValue;
+  }
+
+  public function isToggleAction() {
+    return ($this->toggleValue !== null);
   }
 
   public function getActionGroupKey() {
@@ -40,6 +54,18 @@ final class PhabricatorCustomFieldHeraldAction extends HeraldAction {
     $map = array();
     foreach ($field_list->getFields() as $field) {
       $key = $field->getFieldKey();
+
+      $toggle_options = $field->getHeraldActionToggleOptions();
+      if ($toggle_options !== null) {
+        foreach ($toggle_options as $toggle_value => $toggle_name) {
+          $toggle_key = $key.'.'.$toggle_value;
+          $map[$toggle_key] = id(new self())
+            ->setCustomField($field)
+            ->setToggleValue($toggle_value);
+        }
+        continue;
+      }
+
       $map[$key] = id(new self())
         ->setCustomField($field);
     }
@@ -49,8 +75,13 @@ final class PhabricatorCustomFieldHeraldAction extends HeraldAction {
 
   public function applyEffect($object, HeraldEffect $effect) {
     $field = $this->getCustomField();
-    $value = $effect->getTarget();
     $adapter = $this->getAdapter();
+
+    if ($this->isToggleAction()) {
+      $value = $this->getToggleValue();
+    } else {
+      $value = $effect->getTarget();
+    }
 
     $old_value = $field->getOldValueForApplicationTransactions();
     $new_value = id(clone $field)
@@ -69,6 +100,11 @@ final class PhabricatorCustomFieldHeraldAction extends HeraldAction {
   }
 
   public function getHeraldActionName() {
+    if ($this->isToggleAction()) {
+      $options = $this->getCustomField()->getHeraldActionToggleOptions();
+      return idx($options, $this->getToggleValue());
+    }
+
     return $this->getCustomField()->getHeraldActionName();
   }
 
@@ -80,7 +116,26 @@ final class PhabricatorCustomFieldHeraldAction extends HeraldAction {
     return $this->getCustomField()->getHeraldActionDatasource();
   }
 
+  public function getHeraldActionValueType() {
+    if ($this->isToggleAction()) {
+      return new HeraldEmptyFieldValue();
+    }
+
+    $options = $this->getCustomField()->getHeraldActionSelectOptions();
+    if ($options !== null) {
+      return id(new HeraldSelectFieldValue())
+        ->setKey($this->getCustomField()->getFieldKey())
+        ->setOptions($options);
+    }
+
+    return parent::getHeraldActionValueType();
+  }
+
   public function renderActionDescription($value) {
+    if ($this->isToggleAction()) {
+      $value = $this->getToggleValue();
+    }
+
     return $this->getCustomField()->getHeraldActionDescription($value);
   }
 

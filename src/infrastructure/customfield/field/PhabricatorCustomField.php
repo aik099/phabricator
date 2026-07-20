@@ -1635,6 +1635,22 @@ abstract class PhabricatorCustomField extends Phobject {
     return null;
   }
 
+  public function getHeraldActionSelectOptions() {
+    if ($this->proxy) {
+      return $this->proxy->getHeraldActionSelectOptions();
+    }
+
+    return null;
+  }
+
+  public function getHeraldActionToggleOptions() {
+    if ($this->proxy) {
+      return $this->proxy->getHeraldActionToggleOptions();
+    }
+
+    return null;
+  }
+
   private static function adjustCustomFieldsForObjectSubtype(
     PhabricatorCustomFieldInterface $object,
     $role,

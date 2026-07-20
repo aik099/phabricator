@@ -16,6 +16,14 @@ final class PhabricatorStandardSelectCustomFieldDatasource
   }
 
   public function loadResults() {
+    return $this->filterResultsAgainstTokens($this->buildResults());
+  }
+
+  protected function renderSpecialTokens(array $values) {
+    return $this->renderTokensFromResults($this->buildResults(), $values);
+  }
+
+  private function buildResults() {
     $viewer = $this->getViewer();
 
     $class = $this->getParameter('object');
@@ -82,12 +90,12 @@ final class PhabricatorStandardSelectCustomFieldDatasource
 
     $results = array();
     foreach ($options as $key => $option) {
-      $results[] = id(new PhabricatorTypeaheadResult())
+      $results[$key] = id(new PhabricatorTypeaheadResult())
         ->setName($option)
         ->setPHID($key);
     }
 
-    return $this->filterResultsAgainstTokens($results);
+    return $results;
   }
 
 }

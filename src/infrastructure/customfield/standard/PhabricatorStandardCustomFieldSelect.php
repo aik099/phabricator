@@ -60,7 +60,7 @@ final class PhabricatorStandardCustomFieldSelect
   }
 
   public function getOptions() {
-    return $this->getFieldConfigValue('options', array());
+    return (array)$this->getFieldConfigValue('options', array());
   }
 
   public function renderEditControl(array $handles) {
@@ -134,6 +134,27 @@ final class PhabricatorStandardCustomFieldSelect
       ->setKey('custom.'.$this->getFieldKey())
       ->setDatasource($datasource)
       ->setValueMap($this->getOptions());
+  }
+
+  public function shouldAppearInHeraldActions() {
+    return true;
+  }
+
+  public function getHeraldActionName() {
+    return pht('Set "%s" to', $this->getFieldName());
+  }
+
+  public function getHeraldActionDescription($value) {
+    $label = idx($this->getOptions(), $value, $value);
+    return pht('Set "%s" to: %s.', $this->getFieldName(), $label);
+  }
+
+  public function getHeraldActionEffectDescription($value) {
+    return idx($this->getOptions(), $value, $value);
+  }
+
+  public function getHeraldActionSelectOptions() {
+    return $this->getOptions();
   }
 
   protected function getHTTPParameterType() {

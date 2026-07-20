@@ -95,6 +95,26 @@ final class PhabricatorStandardCustomFieldRemarkup
     return HeraldField::STANDARD_TEXT;
   }
 
+  public function shouldAppearInHeraldActions() {
+    return true;
+  }
+
+  public function getHeraldActionName() {
+    return pht('Set "%s" to', $this->getFieldName());
+  }
+
+  public function getHeraldActionDescription($value) {
+    return pht('Set "%s" to: %s.', $this->getFieldName(), $value);
+  }
+
+  public function getHeraldActionEffectDescription($value) {
+    return $value;
+  }
+
+  public function getHeraldActionStandardType() {
+    return HeraldAction::STANDARD_REMARKUP;
+  }
+
   protected function getHTTPParameterType() {
     return new AphrontStringHTTPParameterType();
   }

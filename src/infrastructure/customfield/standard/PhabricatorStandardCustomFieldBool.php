@@ -133,6 +133,36 @@ final class PhabricatorStandardCustomFieldBool
     return HeraldField::STANDARD_BOOL;
   }
 
+  public static function getHeraldActionOptions() {
+    return array(
+      '1' => pht('Checked'),
+      '0' => pht('Unchecked'),
+    );
+  }
+
+  public function shouldAppearInHeraldActions() {
+    return true;
+  }
+
+  public function getHeraldActionToggleOptions() {
+    return array(
+      '1' => pht('Check "%s"', $this->getFieldName()),
+      '0' => pht('Uncheck "%s"', $this->getFieldName()),
+    );
+  }
+
+  public function getHeraldActionDescription($value) {
+    if ($value) {
+      return pht('Check "%s".', $this->getFieldName());
+    }
+
+    return pht('Uncheck "%s".', $this->getFieldName());
+  }
+
+  public function getHeraldActionEffectDescription($value) {
+    return idx(self::getHeraldActionOptions(), $value, $value);
+  }
+
   protected function getHTTPParameterType() {
     return new AphrontBoolHTTPParameterType();
   }
