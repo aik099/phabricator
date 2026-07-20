@@ -1,6 +1,6 @@
 ---
 name: diffusion-herald-custom-field-actions
-description: How Herald "set a custom field's value" actions work for standard (config-driven) custom fields — which field types support it, how to add support to a new type, the native HeraldSelectFieldValue pattern used for fixed-choice fields (Select, Bool) and why the earlier STANDARD_PHID_LIST/tokenizer approach was abandoned (it produced an "Array" description bug and an "Unknown Object (????)" editor bug), the toggle-action pattern used to split a boolean field into separate no-value "Check"/"Uncheck" actions, why changing an action's key/shape orphans already-saved Herald rule rows, a known "select" field UI gotcha (fields default to the first option instead of being empty, and `AphrontFormRadioButtonControl` is the fix), and why a raw-epoch Herald action for "date" fields causes spurious repeated transactions. Use whenever the user asks about a Herald action to set/change a custom field value (on Diffusion commits or any other app), asks why a custom field doesn't show up as a Herald action, asks to add Herald-action support to a new standard custom field type, reports "Array" or "Unknown Object (????)" rendering in a Herald rule's actions, reports that an unset "select" custom field appears/saves as its first option, reports a Herald rule that keeps re-applying/showing a no-op-looking change every reparse, or reports a Herald rule action that suddenly can't be resolved/rendered after a code change. See also: `add-standard-custom-fields`, for adding config-driven custom field support to an application that doesn't have it yet (a different, earlier concern than wiring up Herald actions for fields that already exist); `custom-field-storage-hashing`, for how `herald_action` rows embed a field's key as plain text; `hardcode-config-driven-custom-field`, which covers migrating those `herald_action` rows when a field's key changes, e.g. when converting a config-driven field to hardcoded.
+description: How Herald "set a custom field's value" actions work for both standard (config-driven) and hardcoded (hand-written) custom fields — which field types/fields support it, how to add support to a new one, the native HeraldSelectFieldValue and toggle-action patterns for fixed-choice/boolean fields, why an earlier STANDARD_PHID_LIST/tokenizer approach and a later Conduit-parameter-type-based auto-derivation were both tried and abandoned, the principle for deciding whether a hardcoded field should get a Herald action at all (skip it if something else -- commit-message parsing, a dynamically-computed count -- already authoritatively owns the value), the full commit-import execution chain showing exactly where Herald gets invoked (and that ordinary edits/reparse are the only two real trigger points), why changing an action's key/shape orphans already-saved Herald rule rows, a known "select" field UI gotcha, and why a raw-epoch Herald action for "date" fields causes spurious repeated transactions. Use whenever the user asks about a Herald action to set/change a custom field value (on Diffusion commits, Differential revisions, or any other app), asks why a custom field doesn't show up as a Herald action, asks to add Herald-action support to a new field (standard or hardcoded), asks which hardcoded custom fields across the codebase are DB-backed or already Herald-actionable, asks where/when during commit import Herald actually runs, reports "Array" or "Unknown Object (????)" rendering in a Herald rule's actions, reports that an unset "select" custom field appears/saves as its first option, or reports a Herald rule that keeps re-applying/showing a no-op-looking change every reparse. See also: `add-standard-custom-fields`, for adding config-driven custom field support to an application that doesn't have it yet (a different, earlier concern than wiring up Herald actions for fields that already exist); `custom-field-storage-hashing`, for how `herald_action` rows embed a field's key as plain text; `hardcode-config-driven-custom-field`, which covers migrating those `herald_action` rows when a field's key changes, e.g. when converting a config-driven field to hardcoded.
 ---
 
 # Herald "Set Custom Field" Actions for Standard Custom Fields
@@ -206,6 +206,65 @@ public function getHeraldActionEffectDescription($value) {
 }
 ```
 
+## Hardcoded (non-"standard") custom fields: the full roster, and which ones should get a Herald action
+
+Bespoke, hand-written `PhabricatorCustomField` subclasses need the same one-line
+`shouldAppearInHeraldActions()` opt-in as any other field -- nothing about the generic mechanism
+cares whether a field is config-driven or hardcoded. But "the infra doesn't need changes" is not
+the same as "it works automatically" -- every field still needs a human to actually write the
+opt-in, and, critically, to judge whether it *should* have one at all.
+
+There are exactly two abstract "DB-backed" bases for hardcoded fields anywhere in the codebase --
+confirmed by grepping every class overriding `shouldUseStorage()` to return `true` directly (as
+opposed to inheriting the default `false`): `PhabricatorCommitStoredCustomField` (Diffusion) and
+`DifferentialStoredCustomField` (Differential). Every hardcoded, DB-backed custom field in the
+whole codebase is a subclass of one of these two -- other apps' "*CoreCustomField" classes
+(Harbormaster, Drydock, Dashboard) all explicitly return `false` for `shouldUseStorage()`, so
+they're a different (non-generic-storage) mechanism entirely, out of scope here.
+
+| Field | Herald action? | Why |
+|---|---|---|
+| `PhabricatorCommitCoAuthoredWithAIField` (Diffusion) | **yes** | fixed boolean, admin-chosen, no competing source |
+| `DifferentialCoAuthoredWithAIField` (Differential) | **yes** | same field, same reasoning, mirrored to the other app |
+| `PhabricatorCommitJIRAIssuesField` (Diffusion) | no | commit-message-derived, see below |
+| `DifferentialJIRAIssuesField` (Differential) | no | commit-message-derived |
+| `DifferentialRevertPlanField` | no | commit-message-derived (`DifferentialRevertPlanCommitMessageField`) |
+| `DifferentialBlameRevisionField` | no | commit-message-derived (`DifferentialBlameRevisionCommitMessageField`) |
+| `DifferentialAuditorsField` | no | commit-message-derived (`DifferentialAuditorsCommitMessageField`) + real PHID-list (bigger lift regardless) |
+| `DifferentialBugCountField` (`src/extensions/`) | no | dynamically computed (a rejected-diff count), not a value anyone picks in advance |
+
+### The decision principle
+
+A Herald action's value is **static** -- fixed once, by whoever writes the rule, at configuration
+time. That's fundamentally incompatible with two categories of field, and it's worth checking for
+both *before* adding the one-line opt-in, not after:
+
+1. **Something else already derives the value from the object's own content, more
+   authoritatively than a human typing a fixed value into a rule ever could.** The concrete case:
+   `PhabricatorRepositoryCommitHeraldWorker::detectJIRAIssues()`
+   (`src/applications/repository/worker/PhabricatorRepositoryCommitHeraldWorker.php:150`) parses
+   the commit's own message text for JIRA references and writes them via a separate
+   `diffusion.commit.edit` Conduit call -- and it runs **after** Herald, in the same import step
+   (see the execution-chain section below), so if Herald also tried to set this field, whichever
+   one ran last would silently clobber the other. This isn't a JIRA-specific quirk: every
+   `Differential*CommitMessageField` class (`src/applications/differential/field/`) is the same
+   shape of thing -- a field whose true source of truth is "what does the object's own message
+   say," which a fixed Herald action can only ever contradict or duplicate, never improve on.
+   Check `grep -rl "{field-key}" src/applications/differential/field/` for a same-named
+   `*CommitMessageField` class before adding Herald support to any hardcoded field.
+2. **The value is inherently something that only exists because of events happening over time**
+   (a running/incrementing count, a computed aggregate, anything with no "correct" value an admin
+   could reasonably predict in advance). `DifferentialBugCountField` ("Rejected diff count") is
+   the concrete example -- even though nothing else in the codebase writes to it (confirmed by
+   grepping the whole tree for its field key/class name), it's not "admin-chosen data waiting for
+   an opt-in," it's a fact about the review's history that a Herald rule has no way to know ahead
+   of time.
+
+If neither applies -- the field really is just "an admin picks a fixed value, and nothing else in
+the system claims to know better" -- it's a safe candidate, exactly like the two `CoAuthoredWithAI`
+fields. If either applies, don't add the opt-in even if it would technically work; the value would
+just be wrong or overwritten in practice.
+
 ## Why `STANDARD_PHID_LIST` was tried and abandoned for Select/Bool
 
 An earlier iteration used `STANDARD_PHID_LIST` (a tokenizer control backed by a datasource) with
@@ -274,6 +333,47 @@ install with existing test rules:
   value shape and/or key scheme necessarily differs. Warn the human up front, before making the
   change, that this will happen — don't let them discover it as a surprise "crash."
 
+## Don't derive Herald behavior from an unrelated subsystem's type system
+
+While wiring up the two hardcoded `CoAuthoredWithAI` fields, an intermediate version made
+`PhabricatorCustomField`'s Herald hooks (`getHeraldActionStandardType()`,
+`getHeraldActionToggleOptions()`, the description/effect-description defaults,
+`setValueFromApplicationTransactions()`, `getApplicationTransactionHasEffect()`) introspect
+`getConduitEditParameterType()` -- e.g. "if this field declares `ConduitBoolParameterType`, treat
+it as toggle-shaped automatically." It worked, but it was the wrong design and was fully reverted:
+Conduit's parameter types answer "how can this field be edited over the API," a genuinely
+different question from "how should Herald represent this value," and fusing the two means a
+Conduit-focused change (swapping to a stricter API type, say) silently reshapes Herald behavior as
+a side effect, with no connection visible at the Herald call site. The correct version has each
+field explicitly declare its own Herald-native shape (`shouldAppearInHeraldActions()` +
+`getHeraldActionToggleOptions()`/`getHeraldActionStandardType()`, nothing about Conduit anywhere) --
+still just 1-3 lines per field, but self-contained within Herald's own vocabulary. If Herald-hook
+defaults in `PhabricatorCustomField.php` are ever found referencing `getConduitEditParameterType()`
+or any `Conduit*ParameterType` class, that's a regression of this exact mistake, not a feature.
+
+The one piece of real substance that came out of chasing this was in
+`PhabricatorCustomFieldHeraldAction::applyEffect()`: it was found that `$old_value` was being
+computed via `getOldValueForApplicationTransactions()` while `$new_value` used
+`getValueForStorage()` -- two different methods that some fields (e.g.
+`PhabricatorCommitCoAuthoredWithAIField`, which intentionally makes the former return `bool` and
+the latter return `int`) give different shapes on purpose, for the ordinary edit-form path, where
+both old and new always go through the *same* method and stay internally consistent (see
+`PhabricatorCustomFieldEditType.php:36,50`, `PhabricatorCustomFieldEditField.php:88,114`,
+`PhabricatorCustomFieldList.php:222,229` -- every one of them pairs old and new from the same
+method). Herald is the only code in the codebase that ever compares across the two different
+methods, which is what exposes the type mismatch as a spurious "this changed" detection on every
+reparse, even when nothing did -- the same symptom as the Date issue below, different root cause.
+Using `getValueForStorage()` for both sides in `applyEffect()` fixes this congruence problem for
+any field, generically, without any field needing to declare anything about it. **As of the last
+check in this codebase, `applyEffect()` had been reverted back to
+`getOldValueForApplicationTransactions()` for the old side** (mismatched with `getValueForStorage()`
+for new again) -- so the type-mismatch risk is currently live for any Herald-enabled field whose
+old/new-for-transactions shape differs from its storage shape (both `CoAuthoredWithAI` fields
+qualify). If you see a Herald-enabled boolean/toggle field re-showing an identical-looking
+"changed" transaction on every reparse, check this first before assuming a new bug -- it's this
+same congruence issue, and the one-line fix (`getValueForStorage()` for both `$old_value` and
+`$new_value`) is already known-good from having been implemented and verified once.
+
 ## Why Date support was tried and reverted
 
 `PhabricatorStandardCustomFieldDate` briefly had `STANDARD_TEXT` Herald-action support (raw
@@ -306,6 +406,75 @@ a UI that produces exactly the same precision as storage, or add a field-specifi
 `getApplicationTransactionHasEffect()` override that treats "no visible change" (e.g. same minute)
 as no effect — the latter wasn't attempted here since there was no concrete need for editing dates
 via Herald in the first place.
+
+## Where Herald actually gets invoked during commit import (and where else it doesn't)
+
+Full backtrace, from a repository daemon discovering a commit down to a matched Herald action's
+transaction actually landing in the DB:
+
+```
+PhabricatorRepositoryDiscoveryEngine discovers a commit
+  -> queues PhabricatorRepositoryGitCommitMessageParserWorker
+       (parses raw commit message; queues its own getFollowupTaskClass())
+  -> PhabricatorRepositoryCommitChangeParserWorker::finishParse()
+       (parses the diff/changed paths; queues PhabricatorRepositoryCommitOwnersWorker)
+  -> PhabricatorRepositoryCommitOwnersWorker::parseCommit()
+       (triggers Owners-package audits; queues PhabricatorRepositoryCommitHeraldWorker)
+
+>>> PhabricatorRepositoryCommitHeraldWorker::parseCommit()  <-- HERALD ENTRY POINT
+      builds one PhabricatorAuditTransaction (TYPE_COMMIT)
+      -> PhabricatorAuditEditor::applyTransactions($commit, $xactions)
+           (PhabricatorAuditEditor extends PhabricatorApplicationTransactionEditor)
+
+           applies the core TYPE_COMMIT transaction, then:
+           -> applyHeraldRules($object, $xactions)
+                builds a HeraldCommitAdapter, calls HeraldEngine::loadAndApplyRules($adapter)
+                  -> HeraldEngine::applyRules(): doesRuleMatch() per rule -> HeraldEffects
+                  -> HeraldEngine::applyEffects(): HeraldAction::applyEffect() per matched action
+                       e.g. PhabricatorCustomFieldHeraldAction::applyEffect()
+                       -> $adapter->queueTransaction($xaction)  -- still just in-memory here
+                returns $adapter->getQueuedTransactions() -- still unpersisted
+
+           -> constructs a SECOND, nested editor: newv(get_class($this))
+                ->setIsHeraldEditor(true)
+                -> $herald_editor->applyTransactions($object, $herald_xactions)  <-- recursion
+                     inner call: getIsHeraldEditor() == true, skips applyHeraldRules() again
+                     *** validates and actually persists the xactions here ***
+
+      after the editor call returns: detectJIRAIssues($repository, $commit, $message)
+        (separate, message-text-based mechanism -- see the "who else owns this value" section
+        above for why this and Herald must never both target the same field)
+```
+
+`shouldApplyHeraldRules()` (the gate checked before `applyHeraldRules()` runs at all) defaults to
+`false` on the base `PhabricatorApplicationTransactionEditor`
+(`src/applications/transactions/editor/PhabricatorApplicationTransactionEditor.php:3708-3712`) --
+it's opt-in per editor subclass, not automatic for every edit.
+`PhabricatorAuditEditor::shouldApplyHeraldRules()`
+(`src/applications/audit/editor/PhabricatorAuditEditor.php:715-732`) only returns `true` when the
+transaction batch includes a `PhabricatorAuditTransaction::TYPE_COMMIT` transaction (the "this
+commit was imported" marker) *and* the repository `shouldPublish()`s -- everything else (a human
+editing a custom field, adding a comment, changing audit status) falls through to the base default
+and does **not** re-trigger Herald. This is why editing a Herald-actionable field by hand doesn't
+immediately show a "Herald ..." transcript entry -- Herald never re-evaluates for that edit at all.
+
+Given that gate, Herald evaluates a commit from exactly two real places, both funneling through
+the identical `TYPE_COMMIT` check:
+1. **Initial import** -- `PhabricatorRepositoryCommitHeraldWorker`, the traced path above.
+2. **Reparse** -- `PhabricatorRepositoryManagementReparseWorkflow`
+   (`bin/repository reparse --herald ...`,
+   `src/applications/repository/management/PhabricatorRepositoryManagementReparseWorkflow.php:296`)
+   directly re-queues `PhabricatorRepositoryCommitHeraldWorker` for an *already-imported* commit --
+   same code path, run again, independent of the original import. This is the standard way to
+   re-trigger Herald against an existing commit for testing.
+
+Herald's own rule-editor **"Test Rule" console** (`HeraldTestConsoleController.php:58-62`) is a
+third path but not a real trigger: it runs with `setDryRun(true)`, and
+`HeraldEngine::applyEffects()` (`HeraldEngine.php:153`) explicitly skips calling
+`$adapter->applyHeraldEffects($effects)` -- meaning `HeraldAction::applyEffect()` (including
+`PhabricatorCustomFieldHeraldAction::applyEffect()`) **never executes at all** in a dry run, not
+even as a no-op -- it just fabricates "this was a dry run" transcript entries. Don't use it to
+verify an action's side effects actually work; use reparse for that.
 
 ## Known gotcha: unset `select` fields render/save as their first option
 
