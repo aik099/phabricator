@@ -40,10 +40,26 @@ final class JenkinsWarnings {
         'line' => $raw_warning->lineStart,
         'message' => $this->decodeMessage($raw_warning->message),
         'priority' => $raw_warning->severity,
+        'rule' => $this->buildRule($raw_warning),
       );
     }
 
     return $grouped_warnings;
+  }
+
+  private function buildRule(stdClass $raw_warning) {
+    // "category" is a sniff group for checkstyle, but a rule set for PMD:
+    //   checkstyle: {"category":"FunctionComment","type":"TypeHintMissing"}
+    //   pmd: {"category":"Design Rules","type":"DevelopmentCodeFragment"}
+    if ($raw_warning->origin == 'pmd') {
+      return nonempty($raw_warning->type, null);
+    }
+
+    $parts = array_filter(
+      array($raw_warning->category, $raw_warning->type),
+      'strlen');
+
+    return nonempty(implode('.', $parts), null);
   }
 
   private function decodeMessage($message) {
